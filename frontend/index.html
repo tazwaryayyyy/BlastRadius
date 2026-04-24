@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>BlastRadius — Pre-merge Impact Intelligence</title>
+  <link rel="stylesheet" href="styles.css" />
+
+  <!-- D3 v7 -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
+</head>
+<body>
+<div id="app">
+
+  <!-- ── Header ──────────────────────────────────────────────── -->
+  <header id="header">
+    <div class="logo">Blast<span>Radius</span></div>
+    <div class="pr-title" id="pr-title">No PR loaded — press Run Demo to begin</div>
+    <div id="risk-badge"></div>
+    <button id="demo-btn">▶ Run Demo</button>
+  </header>
+
+  <!-- ── Main 3-column layout ────────────────────────────────── -->
+  <div id="main">
+
+    <!-- LEFT: Diff viewer -->
+    <div class="panel" id="left-panel">
+      <div class="panel-header">
+        <span class="panel-title">PR Diff</span>
+        <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='flex'">
+          Custom PR
+        </button>
+      </div>
+      <div class="panel-body">
+        <div id="diff-container">
+          <div style="padding:20px 14px;color:var(--text-3);font-size:12px;line-height:1.8">
+            The diff will appear here.<br/>
+            Press <strong style="color:var(--text-2)">Run Demo</strong> to load a pre-seeded
+            rate limiter PR — or paste your own diff above.
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- CENTER: Graph canvas -->
+    <div class="panel" id="graph-panel">
+      <div class="panel-header">
+        <span class="panel-title">Blast Radius Graph</span>
+        <div id="risk-summary" style="display:none"></div>
+      </div>
+
+      <div id="graph-canvas" style="position:relative;flex:1;overflow:hidden">
+        <!-- Idle state -->
+        <div id="graph-idle">
+          <div class="idle-icon">◎</div>
+          <div class="idle-text">
+            Blast radius graph will render here.<br/>
+            Nodes = files &nbsp;·&nbsp; Color = risk level<br/>
+            Dashed border = no test coverage
+          </div>
+          <button id="idle-demo-btn" onclick="document.getElementById('demo-btn').click()"
+            style="background:var(--bg-card);color:var(--text-2);border:1px solid var(--border-hi);
+                   padding:8px 18px;font-family:var(--mono);font-size:12px;border-radius:4px;
+                   cursor:pointer;margin-top:8px;">
+            ▶ Run Demo
+          </button>
+        </div>
+      </div>
+
+      <!-- Bob streaming log -->
+      <div id="stream-log">
+        <span class="stream-label">Bob is tracing call chains… </span>
+        <div id="stream-content" style="opacity:0.7;margin-top:4px"></div>
+      </div>
+
+      <!-- Merge recommendation -->
+      <div id="recommendation-bar">
+        <div id="merge-verdict"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Chain detail panel -->
+    <div class="panel" id="right-panel">
+      <div class="panel-header">
+        <span class="panel-title">Impact Chains</span>
+      </div>
+      <div class="panel-body">
+        <div id="detail-empty" style="padding:24px 16px;color:var(--text-3);font-size:12px;line-height:1.9;text-align:center">
+          Click a node in the graph<br/>to see its blast radius chain.
+        </div>
+        <div id="detail-panel"></div>
+      </div>
+    </div>
+
+  </div><!-- /#main -->
+</div><!-- /#app -->
+
+
+<!-- ── Custom PR modal ───────────────────────────────────────────── -->
+<div id="custom-modal" style="
+  display:none; position:fixed; inset:0; z-index:100;
+  background:rgba(0,0,0,0.7); align-items:center; justify-content:center;
+">
+  <div style="
+    background:var(--bg-panel); border:1px solid var(--border-hi);
+    border-radius:8px; padding:20px; width:560px; max-width:95vw;
+  ">
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+      <span style="font-family:var(--sans);font-weight:600;font-size:14px">Paste a unified diff</span>
+      <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='none'">✕</button>
+    </div>
+    <textarea id="diff-input" rows="16" style="
+      width:100%; background:var(--bg-card); color:var(--text);
+      border:1px solid var(--border-hi); border-radius:4px;
+      padding:10px 12px; font-family:var(--mono); font-size:12px;
+      resize:vertical; outline:none; line-height:1.6;
+    " placeholder="Paste unified diff output here (git diff HEAD, PR diff, etc.)..."></textarea>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='none'">Cancel</button>
+      <button id="analyze-btn" style="
+        background:var(--info); color:#fff; border:none; padding:6px 16px;
+        font-family:var(--mono); font-size:12px; border-radius:4px; cursor:pointer;
+      ">Analyze PR</button>
+    </div>
+  </div>
+</div>
+
+
+<!-- ── Scripts ───────────────────────────────────────────────────── -->
+<script src="diff_viewer.js"></script>
+<script src="graph.js"></script>
+<script>
+  // Allow overriding API base URL from the page
+  window.API_BASE = 'http://localhost:8000';
+</script>
+<script src="app.js"></script>
+
+</body>
+</html>

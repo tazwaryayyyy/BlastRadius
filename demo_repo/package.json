@@ -1,0 +1,21 @@
+{
+  "name": "blastradius-demo-app",
+  "version": "1.0.0",
+  "description": "Demo monorepo for BlastRadius hackathon demo",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "test": "jest --coverage"
+  },
+  "jest": {
+    "testEnvironment": "node",
+    "collectCoverageFrom": [
+      "api/**/*.js",
+      "services/**/*.js",
+      "shared/**/*.js"
+    ]
+  },
+  "devDependencies": {
+    "jest": "^29.7.0"
+  }
+}

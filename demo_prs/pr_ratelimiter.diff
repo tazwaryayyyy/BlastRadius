@@ -1,0 +1,12 @@
+diff --git a/shared/rate_limiter.js b/shared/rate_limiter.js
+index a1b2c3d..e4f5a6b 100644
+--- a/shared/rate_limiter.js
++++ b/shared/rate_limiter.js
+@@ -12,8 +12,8 @@ class RateLimiter {
+   constructor(options = {}) {
+-    this.windowMs = options.windowMs ?? 60000;      // 60 second window
+-    this.maxRequests = options.maxRequests ?? 100;  // 100 requests per window
++    this.windowMs = options.windowMs ?? 30000;      // 30 second window (tightened for security)
++    this.maxRequests = options.maxRequests ?? 50;   // 50 requests per window (tightened for security)
+     this.keyPrefix = options.keyPrefix ?? 'rl';
+   }
