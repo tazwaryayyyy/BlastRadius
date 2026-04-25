@@ -17,6 +17,22 @@ this affect downstream?**
 
 ---
 
+## Why IBM Bob?
+
+Most code analysis tools work file by file. They see what changed. They don't see what that change reaches.
+
+Bob holds the **entire repository in context simultaneously** — every file, every import chain, every call relationship. That's not a feature. It's the only way this product is possible.
+
+Specifically, Bob:
+- Traces multi-hop call chains across the full codebase (not just direct imports)
+- Detects dynamic call patterns that static analysis tools miss
+- Correlates changed symbols against the complete test suite to find coverage gaps
+- Produces causal explanations — *why* a path is risky, not just *that* it exists
+
+Replace Bob with a file-level tool and BlastRadius becomes a broken diff viewer. The full-repo context is the product.
+
+---
+
 ## Stack
 
 | Layer     | Tech                              |
@@ -206,6 +222,48 @@ npx serve .          # or python -m http.server 3000
 | `BOB_FALLBACK_MODEL`  | No       | Fallback model (default: `gpt-4o`)       |
 
 *At least one of (Bob or fallback) must be configured.
+
+---
+
+## BlastRadius vs existing tools
+
+| Capability | BlastRadius | CodeRabbit | GitHub Copilot | Cursor |
+|---|---|---|---|---|
+| Reviews code you wrote | ✓ | ✓ | ✓ | ✓ |
+| Traces downstream impact | ✓ | ✗ | ✗ | ✗ |
+| Multi-hop call graph tracing | ✓ | ✗ | ✗ | ✗ |
+| Test coverage gap detection | ✓ | Partial | ✗ | ✗ |
+| Merge verdict with reasoning | ✓ | ✗ | ✗ | ✗ |
+| Full repo context simultaneously | ✓ (via Bob) | ✗ | ✗ | Partial |
+| Works on any diff / any language | ✓ | ✓ | ✓ | ✓ |
+| Visual blast radius graph | ✓ | ✗ | ✗ | ✗ |
+
+The key distinction: every tool in this table tells you if your code is *good*. BlastRadius tells you if merging it is *safe*.
+
+---
+
+## Troubleshooting
+
+**Bob API returns 401**
+Check `BOB_API_KEY` in `.env`. Make sure there are no trailing spaces or quotes around the key.
+
+**Graph renders but shows no nodes**
+Bob returned an empty `call_chains` array. This means the diff symbols weren't found in the repo files. Verify `repo_path` points to the correct directory and the diff file paths match the repo structure.
+
+**SSE stream hangs / never completes**
+Nginx is likely buffering the stream. Confirm `nginx.conf` has `proxy_buffering off` and `proxy_read_timeout 180s`. If running locally without nginx, the stream connects directly to FastAPI and this isn't an issue.
+
+**`uvicorn: command not found` after install**
+The venv wasn't activated. Run `source backend/.venv/bin/activate` (Linux/Mac) or `backend\.venv\Scripts\activate` (Windows) before running uvicorn.
+
+**Docker Compose: `port 8000 already in use`**
+Another process is on port 8000. Either stop it (`lsof -ti:8000 | xargs kill`) or change the port in `docker-compose.yml` and `frontend/app.js` (`window.API_BASE`).
+
+**Bob fallback not triggering**
+The fallback only activates if `BOB_API_URL` is set but unreachable, or returns a non-2xx error. If `BOB_API_URL` is empty, the fallback is used directly. Check logs for `"Bob primary failed"` to confirm fallback activation.
+
+**Demo diff loads but analysis never finishes**
+Bob's response is taking longer than `REQUEST_TIMEOUT` (120s). Increase it in `bob_client.py` or check Bob API status.
 
 ---
 

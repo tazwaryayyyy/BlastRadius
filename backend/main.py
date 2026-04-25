@@ -171,7 +171,7 @@ async def stream_analysis(
             async for chunk in analyze_stream(system, user):
                 accumulated.append(chunk)
                 # Stream raw tokens to frontend
-                yield f"data: {json.dumps({'type': 'token', 'content': chunk})}\n\n"
+                yield f"data: {json.dumps({'type': 'token', 'content': chunk, 'token_count': len(''.join(accumulated))})}\n\n"
 
             # Parse the accumulated JSON and send the final structured report
             raw_json = "".join(accumulated)

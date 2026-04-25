@@ -16,7 +16,12 @@
   <header id="header">
     <div class="logo">Blast<span>Radius</span></div>
     <div class="pr-title" id="pr-title">No PR loaded — press Run Demo to begin</div>
+    <div id="bob-metrics" style="display:none;font-size:11px;color:var(--text-3);gap:10px;align-items:center"></div>
     <div id="risk-badge"></div>
+    <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
+      <span style="font-size:10px;color:var(--text-3);letter-spacing:0.05em">POWERED BY</span>
+      <span style="font-size:11px;font-weight:700;color:#0f62fe;letter-spacing:0.04em;background:rgba(15,98,254,0.1);border:1px solid rgba(15,98,254,0.25);padding:2px 8px;border-radius:3px;">IBM Bob</span>
+    </div>
     <button id="demo-btn">▶ Run Demo</button>
   </header>
 
@@ -69,7 +74,10 @@
 
       <!-- Bob streaming log -->
       <div id="stream-log">
-        <span class="stream-label">Bob is tracing call chains… </span>
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <span class="stream-label">IBM Bob is tracing call chains…</span>
+          <span id="stream-metrics" style="font-size:10px;color:var(--text-3)"></span>
+        </div>
         <div id="stream-content" style="opacity:0.7;margin-top:4px"></div>
       </div>
 
@@ -87,6 +95,11 @@
       <div class="panel-body">
         <div id="detail-empty" style="padding:24px 16px;color:var(--text-3);font-size:12px;line-height:1.9;text-align:center">
           Click a node in the graph<br/>to see its blast radius chain.
+        </div>
+        <div id="no-chains-state" style="display:none;padding:24px 16px;text-align:center">
+          <div style="font-size:28px;margin-bottom:10px">✓</div>
+          <div style="font-size:13px;font-weight:500;color:var(--low);margin-bottom:6px">No blast radius detected</div>
+          <div style="font-size:12px;color:var(--text-3);line-height:1.8">IBM Bob traced all call chains<br/>and found no downstream impact.<br/>Safe to merge.</div>
         </div>
         <div id="detail-panel"></div>
       </div>

@@ -23,13 +23,19 @@ const diffInput       = document.getElementById('diff-input');
 const graphIdle       = document.getElementById('graph-idle');
 const streamLog       = document.getElementById('stream-log');
 const streamContent   = document.getElementById('stream-content');
+const streamMetrics   = document.getElementById('stream-metrics');
 const detailPanel     = document.getElementById('detail-panel');
 const detailEmpty     = document.getElementById('detail-empty');
+const noChainsState   = document.getElementById('no-chains-state');
 const riskBadge       = document.getElementById('risk-badge');
 const prTitleEl       = document.getElementById('pr-title');
 const riskSummaryEl   = document.getElementById('risk-summary');
 const mergeVerdictEl  = document.getElementById('merge-verdict');
 const recommendBar    = document.getElementById('recommendation-bar');
+const bobMetrics      = document.getElementById('bob-metrics');
+
+// Analysis timing
+let analysisStartTime = null;
 
 
 // ── Init ───────────────────────────────────────────────────────────
@@ -54,6 +60,7 @@ async function runDemo() {
 
     if (prTitleEl) prTitleEl.textContent = pr_title;
 
+    analysisStartTime = Date.now();
     // Stream the analysis
     await streamAnalysis(diff, 'demo_repo', pr_title);
 
@@ -104,6 +111,11 @@ async function streamAnalysis(diff, repoPath, prTitle) {
       if (data.type === 'token') {
         // Append Bob's reasoning token-by-token
         appendStreamToken(data.content);
+        // Live metrics: tokens processed
+        if (streamMetrics && data.token_count) {
+          const elapsed = analysisStartTime ? ((Date.now() - analysisStartTime) / 1000).toFixed(1) : '';
+          streamMetrics.textContent = `${data.token_count} tokens · ${elapsed}s`;
+        }
         return;
       }
 
@@ -159,6 +171,21 @@ async function fetchAnalysis(diff, repoPath, prTitle) {
 function renderReport(report) {
   currentReport = report;
 
+  // Bob metrics — files analyzed + time taken
+  const elapsed = analysisStartTime ? ((Date.now() - analysisStartTime) / 1000).toFixed(1) : null;
+  const fileCount = new Set(report.call_chains.flatMap(c => c.path)).size;
+  if (bobMetrics) {
+    const parts = [];
+    if (fileCount > 0) parts.push(`${fileCount} files traced`);
+    if (elapsed) parts.push(`${elapsed}s`);
+    if (parts.length) {
+      bobMetrics.style.display = 'flex';
+      bobMetrics.innerHTML = parts.map(p =>
+        `<span style="background:var(--bg-card);border:1px solid var(--border);padding:1px 8px;border-radius:3px">${p}</span>`
+      ).join('');
+    }
+  }
+
   // Graph
   graphIdle.style.display = 'none';
   BlastGraph.renderGraph(report);
@@ -176,8 +203,13 @@ function renderReport(report) {
   // Merge recommendation
   renderMergeVerdict(report.merge_recommendation);
 
-  // Chain list in right panel
-  renderChainList(report);
+  // Chain list — handle empty state
+  if (report.call_chains.length === 0) {
+    detailEmpty.style.display = 'none';
+    if (noChainsState) noChainsState.style.display = 'block';
+  } else {
+    renderChainList(report);
+  }
 
   // Update diff viewer with blast entry symbols
   DiffViewer.renderDiff('diff-container',
@@ -319,12 +351,15 @@ function clearUI() {
   graphIdle.style.display = 'flex';
   detailPanel.innerHTML = '';
   detailEmpty.style.display = 'block';
+  if (noChainsState) noChainsState.style.display = 'none';
   riskBadge.className = '';
   riskBadge.style.display = 'none';
   riskSummaryEl.style.display = 'none';
   riskSummaryEl.innerHTML = '';
   mergeVerdictEl.style.display = 'none';
   recommendBar.style.display = 'none';
+  if (bobMetrics) bobMetrics.style.display = 'none';
+  analysisStartTime = null;
   DiffViewer.clearDiff('diff-container');
 }
 
