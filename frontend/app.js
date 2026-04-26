@@ -17,6 +17,7 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
 
 // ── State ──────────────────────────────────────────────────────────
 let currentReport = null;
+let currentDiff = '';
 
 // ── DOM refs ───────────────────────────────────────────────────────
 const demoBtn = document.getElementById('demo-btn');
@@ -71,6 +72,7 @@ async function runDemo() {
       throw new Error('Demo diff payload is missing or invalid.');
     }
 
+    currentDiff = diff;
     DiffViewer.renderDiff('diff-container', diff, []);
 
     if (prTitleEl) prTitleEl.textContent = pr_title;
@@ -94,11 +96,17 @@ async function runCustomAnalysis() {
     return;
   }
 
+  document.getElementById('custom-modal').style.display = 'none';
+
   setLoading(true);
   clearUI();
+  currentDiff = diff;
   DiffViewer.renderDiff('diff-container', diff, []);
+  
+  if (prTitleEl) prTitleEl.textContent = 'Custom PR';
 
   try {
+    analysisStartTime = Date.now();
     await streamAnalysis(diff, 'demo_repo', 'Custom PR');
   } catch (err) {
     showError(err.message);
@@ -197,7 +205,7 @@ function renderReport(report) {
     if (parts.length) {
       bobMetrics.style.display = 'flex';
       bobMetrics.innerHTML = parts.map(p =>
-        `<span style="background:var(--bg-card);border:1px solid var(--border);padding:1px 8px;border-radius:3px">${p}</span>`
+        `<span class="bob-metric-pill">${p}</span>`
       ).join('');
     }
   }
@@ -232,7 +240,7 @@ function renderReport(report) {
 
   // Update diff viewer with blast entry symbols
   DiffViewer.renderDiff('diff-container',
-    currentReport._diff ?? '',
+    currentDiff,
     report.changed_symbols
   );
 }
@@ -284,9 +292,12 @@ function buildChainCard(chain) {
     : '';
 
   const confLevel = (chain.confidence || 'MEDIUM').toUpperCase();
+  const confReason = confLevel === 'LOW'
+    ? `${chain.confidence_reason || ''} — verify dynamic dispatch manually`
+    : (chain.confidence_reason || '');
   const confidence = `
     <div class="chain-confidence confidence-${confLevel}">
-      Confidence: ${confLevel} · ${escapeHtml(chain.confidence_reason || '')}
+      ${confLevel} confidence${confReason ? ` · ${escapeHtml(confReason)}` : ''}
     </div>`;
 
   return `
@@ -403,11 +414,15 @@ function renderRiskScore(score) {
   if (!riskScoreEl || !riskScoreValue) return;
 
   riskScoreValue.textContent = String(score);
-  riskScoreEl.className = score >= 70
-    ? 'score-high'
-    : score >= 40
-      ? 'score-medium'
-      : 'score-low';
+  riskScoreEl.className = score === 0
+    ? 'score-neutral'
+    : score >= 86
+      ? 'score-high'
+      : score >= 61
+        ? 'score-medium'
+        : score >= 31
+          ? 'score-caution'
+          : 'score-low';
 }
 
 
@@ -423,7 +438,7 @@ function getTopRisk(summary) {
 
 function setLoading(loading) {
   demoBtn.disabled = loading;
-  demoBtn.textContent = loading ? 'Analyzing…' : 'Run Demo';
+  demoBtn.textContent = loading ? 'Analyzing...' : 'Run Demo';
   if (analyzeBtn) analyzeBtn.disabled = loading;
 }
 

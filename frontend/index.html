@@ -5,6 +5,11 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BlastRadius — Pre-merge Impact Intelligence</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link
+    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;700&display=swap"
+    rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
 
   <!-- D3 v7 -->
@@ -18,19 +23,17 @@
     <header id="header">
       <div class="logo">Blast<span>Radius</span></div>
       <div class="pr-title" id="pr-title">No PR loaded — press Run Demo to begin</div>
-      <div id="bob-metrics" style="display:none;font-size:11px;color:var(--text-3);gap:10px;align-items:center"></div>
+      <div id="bob-metrics"></div>
       <div id="risk-score" class="score-neutral">
         <span class="score-label">Risk Score</span>
         <span id="risk-score-value">0</span>
       </div>
       <div id="risk-badge"></div>
-      <div style="display:flex;align-items:center;gap:6px;flex-shrink:0">
-        <span style="font-size:10px;color:var(--text-3);letter-spacing:0.05em">POWERED BY</span>
-        <span
-          style="font-size:11px;font-weight:700;color:#0f62fe;letter-spacing:0.04em;background:rgba(15,98,254,0.1);border:1px solid rgba(15,98,254,0.25);padding:2px 8px;border-radius:3px;">IBM
-          Bob</span>
+      <div class="bob-badge-wrap">
+        <span class="bob-powered">Powered by</span>
+        <span class="bob-badge">IBM Bob</span>
       </div>
-      <button id="demo-btn">▶ Run Demo</button>
+      <button id="demo-btn">Run Demo</button>
     </header>
 
     <!-- ── Main 3-column layout ────────────────────────────────── -->
@@ -46,9 +49,9 @@
         </div>
         <div class="panel-body">
           <div id="diff-container">
-            <div style="padding:20px 14px;color:var(--text-3);font-size:12px;line-height:1.8">
+            <div class="diff-placeholder">
               The diff will appear here.<br />
-              Press <strong style="color:var(--text-2)">Run Demo</strong> to load a pre-seeded
+              Press <strong>Run Demo</strong> to load a pre-seeded
               rate limiter PR — or paste your own diff above.
             </div>
           </div>
@@ -59,10 +62,10 @@
       <div class="panel" id="graph-panel">
         <div class="panel-header">
           <span class="panel-title">Blast Radius Graph</span>
-          <div id="risk-summary" style="display:none"></div>
+          <div id="risk-summary"></div>
         </div>
 
-        <div id="graph-canvas" style="position:relative;flex:1;overflow:hidden">
+        <div id="graph-canvas">
           <!-- Idle state -->
           <div id="graph-idle">
             <div class="idle-icon">◎</div>
@@ -71,21 +74,19 @@
               Nodes = files &nbsp;·&nbsp; Color = risk level<br />
               Dashed border = no test coverage
             </div>
-            <button id="idle-demo-btn" onclick="document.getElementById('demo-btn').click()" style="background:var(--bg-card);color:var(--text-2);border:1px solid var(--border-hi);
-                   padding:8px 18px;font-family:var(--mono);font-size:12px;border-radius:4px;
-                   cursor:pointer;margin-top:8px;">
-              ▶ Run Demo
+            <button id="idle-demo-btn" class="btn-sm" onclick="document.getElementById('demo-btn').click()">
+              Run Demo
             </button>
           </div>
         </div>
 
         <!-- Bob streaming log -->
         <div id="stream-log">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+          <div class="stream-head">
             <span class="stream-label">IBM Bob is tracing call chains…</span>
-            <span id="stream-metrics" style="font-size:10px;color:var(--text-3)"></span>
+            <span id="stream-metrics"></span>
           </div>
-          <div id="stream-content" style="opacity:0.7;margin-top:4px"></div>
+          <div id="stream-content"></div>
         </div>
 
         <!-- Merge recommendation -->
@@ -101,15 +102,14 @@
           <span class="panel-title">Impact Chains</span>
         </div>
         <div class="panel-body">
-          <div id="detail-empty"
-            style="padding:24px 16px;color:var(--text-3);font-size:12px;line-height:1.9;text-align:center">
+          <div id="detail-empty">
             Click a node in the graph<br />to see its blast radius chain.
           </div>
-          <div id="no-chains-state" style="display:none;padding:24px 16px;text-align:center">
-            <div style="font-size:28px;margin-bottom:10px">✓</div>
-            <div style="font-size:13px;font-weight:500;color:var(--low);margin-bottom:6px">No blast radius detected
+          <div id="no-chains-state">
+            <div class="no-chains-icon">✓</div>
+            <div class="no-chains-title">No blast radius detected
             </div>
-            <div style="font-size:12px;color:var(--text-3);line-height:1.8">IBM Bob traced all call chains<br />and
+            <div class="no-chains-copy">IBM Bob traced all call chains<br />and
               found no downstream impact.<br />Safe to merge.</div>
           </div>
           <div id="detail-panel"></div>
@@ -121,30 +121,17 @@
 
 
   <!-- ── Custom PR modal ───────────────────────────────────────────── -->
-  <div id="custom-modal" style="
-  display:none; position:fixed; inset:0; z-index:100;
-  background:rgba(0,0,0,0.7); align-items:center; justify-content:center;
-">
-    <div style="
-    background:var(--bg-panel); border:1px solid var(--border-hi);
-    border-radius:8px; padding:20px; width:560px; max-width:95vw;
-  ">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
-        <span style="font-family:var(--sans);font-weight:600;font-size:14px">Paste a unified diff</span>
+  <div id="custom-modal">
+    <div class="custom-modal-body">
+      <div class="custom-modal-header">
+        <span class="custom-modal-title">Paste a unified diff</span>
         <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='none'">✕</button>
       </div>
-      <textarea id="diff-input" rows="16" style="
-      width:100%; background:var(--bg-card); color:var(--text);
-      border:1px solid var(--border-hi); border-radius:4px;
-      padding:10px 12px; font-family:var(--mono); font-size:12px;
-      resize:vertical; outline:none; line-height:1.6;
-    " placeholder="Paste unified diff output here (git diff HEAD, PR diff, etc.)..."></textarea>
-      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:12px">
+      <textarea id="diff-input" rows="16"
+        placeholder="Paste unified diff output here (git diff HEAD, PR diff, etc.)..."></textarea>
+      <div class="custom-modal-actions">
         <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='none'">Cancel</button>
-        <button id="analyze-btn" style="
-        background:var(--info); color:#fff; border:none; padding:6px 16px;
-        font-family:var(--mono); font-size:12px; border-radius:4px; cursor:pointer;
-      ">Analyze PR</button>
+        <button id="analyze-btn">Analyze PR</button>
       </div>
     </div>
   </div>
@@ -153,10 +140,6 @@
   <!-- ── Scripts ───────────────────────────────────────────────────── -->
   <script src="diff_viewer.js"></script>
   <script src="graph.js"></script>
-  <script>
-    // Allow overriding API base URL from the page
-    window.API_BASE = 'http://localhost:8000';
-  </script>
   <script src="app.js"></script>
 
 </body>

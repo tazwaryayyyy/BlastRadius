@@ -10,19 +10,19 @@
 
 const RISK_COLOR = {
   CRITICAL: '#ff4444',
-  HIGH:     '#ff8c00',
-  MEDIUM:   '#f0c040',
-  LOW:      '#40c080',
-  CHANGED:  '#44aaff',
-  SAFE:     '#2c3340',
+  HIGH: '#ff8c00',
+  MEDIUM: '#f0c040',
+  LOW: '#40c080',
+  CHANGED: '#44aaff',
+  SAFE: '#2c3340',
 };
 
 const RISK_GLOW = {
   CRITICAL: 'rgba(255, 68, 68, 0.5)',
-  HIGH:     'rgba(255, 140, 0, 0.4)',
-  MEDIUM:   'rgba(240, 192, 64, 0.3)',
-  LOW:      'rgba(64, 192, 128, 0.3)',
-  CHANGED:  'rgba(68, 170, 255, 0.5)',
+  HIGH: 'rgba(255, 140, 0, 0.4)',
+  MEDIUM: 'rgba(240, 192, 64, 0.3)',
+  LOW: 'rgba(64, 192, 128, 0.3)',
+  CHANGED: 'rgba(68, 170, 255, 0.5)',
 };
 
 let svg = null;
@@ -86,7 +86,10 @@ function initGraph(containerId, onNodeClick) {
   window.addEventListener('resize', () => {
     const { width: w, height: h } = container.getBoundingClientRect();
     svg.attr('width', w).attr('height', h);
-    if (simulation) simulation.alpha(0.3).restart();
+    if (simulation) {
+      simulation.force('center', d3.forceCenter(w / 2, h / 2));
+      simulation.alpha(0.3).restart();
+    }
   });
 }
 
@@ -101,14 +104,13 @@ function buildGraphData(report) {
   // Add nodes from call chains
   report.call_chains.forEach((chain) => {
     chain.path.forEach((filePath, idx) => {
+      const isChangedThisTime = report.changed_symbols.length > 0 && idx === 0;
       if (!nodeMap.has(filePath)) {
-        const isChanged = report.changed_symbols.length > 0 &&
-          (filePath.includes('rate_limiter') || idx === 0);
         nodeMap.set(filePath, {
           id: filePath,
           label: filePath.split('/').pop(),
-          risk: isChanged ? 'CHANGED' : chain.risk,
-          is_changed: isChanged,
+          risk: isChangedThisTime ? 'CHANGED' : chain.risk,
+          is_changed: isChangedThisTime,
           has_tests: chain.has_tests,
           chain_count: 1,
         });
@@ -117,8 +119,11 @@ function buildGraphData(report) {
         node.chain_count++;
         // Escalate risk if this chain is higher
         const riskOrder = ['LOW', 'MEDIUM', 'HIGH', 'CRITICAL'];
-        if (!node.is_changed &&
-            riskOrder.indexOf(chain.risk) > riskOrder.indexOf(node.risk)) {
+        if (isChangedThisTime && !node.is_changed) {
+          node.is_changed = true;
+          node.risk = 'CHANGED';
+        } else if (!node.is_changed &&
+          riskOrder.indexOf(chain.risk) > riskOrder.indexOf(node.risk)) {
           node.risk = chain.risk;
           node.has_tests = node.has_tests && chain.has_tests;
         }
@@ -171,6 +176,7 @@ function renderGraph(report) {
     .force('collision', d3.forceCollide().radius(32))
     .alphaDecay(0.025);
 
+
   // ── Edges ──────────────────────────────────────────────────────
   const link = svg.append('g').attr('class', 'links')
     .selectAll('line')
@@ -178,6 +184,7 @@ function renderGraph(report) {
     .join('line')
     .attr('class', 'link')
     .attr('stroke', (d) => RISK_COLOR[d.risk] || RISK_COLOR.SAFE)
+    .attr('stroke-width', 1.5)
     .attr('marker-end', (d) => `url(#arrow-${d.risk})`);
 
   // ── Nodes ──────────────────────────────────────────────────────
@@ -193,16 +200,24 @@ function renderGraph(report) {
       if (onNodeClickCb) onNodeClickCb(d, report);
     });
 
+  // Node radii and stroke per spec
+  const BASE_RADIUS = 13; // px, default node
+  const CHANGED_RADIUS = 18; // px, changed node
+  const LABEL_DY = 22; // px, label offset
+  const PULSE_BASE = 20; // px, pulse ring for normal
+  const PULSE_CHANGED = 26; // px, pulse ring for changed
+
   // Node circle
   node.append('circle')
-    .attr('r', (d) => d.is_changed ? 18 : (10 + d.chain_count * 2))
+    .attr('r', (d) => d.is_changed ? CHANGED_RADIUS : BASE_RADIUS)
     .attr('fill', (d) => {
+      // Use a subtle fill for all nodes, blue for changed
+      if (d.is_changed) return 'rgba(68,170,255,0.13)';
       const color = RISK_COLOR[d.risk] || RISK_COLOR.SAFE;
-      // Dimmer fill, bright stroke
-      return d.is_changed ? 'rgba(68,170,255,0.15)' : `${color}18`;
+      return `${color}18`;
     })
     .attr('stroke', (d) => RISK_COLOR[d.risk] || RISK_COLOR.SAFE)
-    .attr('stroke-width', (d) => d.is_changed ? 2.5 : 1.5)
+    .attr('stroke-width', (d) => d.is_changed ? 2.5 : 1.7)
     .attr('stroke-dasharray', (d) => d.has_tests ? 'none' : '4 3')
     .attr('filter', (d) =>
       ['CRITICAL', 'CHANGED'].includes(d.risk) ? `url(#glow-${d.risk})` : 'none'
@@ -211,17 +226,18 @@ function renderGraph(report) {
   // Node label
   node.append('text')
     .text((d) => d.label.length > 18 ? d.label.slice(0, 16) + '…' : d.label)
-    .attr('dy', (d) => (d.is_changed ? 18 : 14) + 10)
+    .attr('dy', LABEL_DY)
     .style('fill', (d) => RISK_COLOR[d.risk] || '#4a5060');
 
-  // CRITICAL pulse ring
+  // CRITICAL pulse ring (animated)
   node.filter((d) => d.risk === 'CRITICAL')
     .append('circle')
     .attr('class', 'pulse-ring')
-    .attr('r', (d) => d.is_changed ? 22 : 16)
+    .attr('r', (d) => d.is_changed ? PULSE_CHANGED : PULSE_BASE)
     .attr('fill', 'none')
-    .attr('stroke', '#ff444440')
-    .attr('stroke-width', 1)
+    .attr('stroke', '#ff4444')
+    .attr('stroke-width', 1.5)
+    .attr('opacity', 0.55)
     .call(addPulse);
 
   // Click canvas to reset
@@ -246,10 +262,10 @@ function renderGraph(report) {
 function addPulse(selection) {
   function repeat() {
     selection
-      .attr('r', function (d) { return d.is_changed ? 22 : 16; })
-      .attr('opacity', 0.6)
+      .attr('r', function (d) { return d.is_changed ? 26 : 20; })
+      .attr('opacity', 0.55)
       .transition().duration(1200).ease(d3.easeSinOut)
-      .attr('r', function (d) { return (d.is_changed ? 22 : 16) + 12; })
+      .attr('r', function (d) { return (d.is_changed ? 26 : 20) + 12; })
       .attr('opacity', 0)
       .on('end', repeat);
   }
