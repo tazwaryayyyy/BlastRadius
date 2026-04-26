@@ -129,6 +129,8 @@ async def _run_analysis(req: AnalyzeRequest) -> BlastRadiusReport:
 # ── Routes ────────────────────────────────────────────────────────
 
 @app.get("/api/health")
+@app.get("/health")
+@app.get("/")
 async def health():
     return {"status": "ok", "service": "blastradius"}
 
