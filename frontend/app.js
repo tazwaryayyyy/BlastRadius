@@ -11,7 +11,9 @@
 
 /* global BlastGraph, DiffViewer */
 
-const API_BASE = window.API_BASE || 'http://localhost:8000';
+const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
+  ? 'http://localhost:8000'
+  : 'https://blastradius-api.onrender.com';
 
 // ── State ──────────────────────────────────────────────────────────
 let currentReport = null;

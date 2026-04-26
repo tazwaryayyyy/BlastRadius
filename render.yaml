@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: blastradius-api
+    runtime: docker
+    dockerfilePath: ./backend/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: BOB_API_URL
+        sync: false
+      - key: BOB_API_KEY
+        sync: false
+      - key: BOB_MODEL
+        value: bob-v1
+      - key: BOB_FALLBACK_URL
+        sync: false
+      - key: BOB_FALLBACK_API_KEY
+        sync: false
+      - key: BOB_FALLBACK_MODEL
+        value: gpt-4o
+    healthCheckPath: /api/health
