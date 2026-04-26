@@ -3,6 +3,9 @@
 > Pre-merge impact intelligence powered by IBM Bob.
 > Know exactly what your PR will break — before it merges.
 
+**Live Demo:** [https://blastradius-rosy.vercel.app/](https://blastradius-rosy.vercel.app/)
+**API Base:** [https://blastradius-api.onrender.com](https://blastradius-api.onrender.com)
+
 ---
 
 ## What it does
@@ -279,4 +282,3 @@ Bob's response is taking longer than `REQUEST_TIMEOUT` (120s). Increase it in `b
 
 ---
 
-## IBM Bob Hackathon — May 15–17, 2026
