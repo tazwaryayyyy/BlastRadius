@@ -371,24 +371,24 @@ class TestBobFallback:
         """Primary endpoint raises; fallback endpoint returns valid JSON."""
         import asyncio
         import httpx
-        from unittest.mock import AsyncMock, patch
+        from unittest.mock import patch
         import bob_client
 
         good_resp = self._make_good_response()
         calls = []
 
-        async def fake_post(client, url, key, payload):
+        async def fake_post(_client, url, _key, _payload):
             calls.append(url)
             if "garbage" in url:
                 raise httpx.ConnectError("connection refused")
             return good_resp
 
         with patch.object(bob_client, "BOB_URL", "http://garbage.invalid"), \
-             patch.object(bob_client, "BOB_KEY", "bad-key"), \
-             patch.object(bob_client, "FALLBACK_URL", "http://real.fallback"), \
-             patch.object(bob_client, "FALLBACK_KEY", "good-key"), \
-             patch.object(bob_client, "FALLBACK_MODEL", "gpt-4o"), \
-             patch("bob_client._post", side_effect=fake_post):
+                patch.object(bob_client, "BOB_KEY", "bad-key"), \
+                patch.object(bob_client, "FALLBACK_URL", "http://real.fallback"), \
+                patch.object(bob_client, "FALLBACK_KEY", "good-key"), \
+                patch.object(bob_client, "FALLBACK_MODEL", "gpt-4o"), \
+                patch("bob_client._post", side_effect=fake_post):
 
             result = asyncio.run(bob_client.analyze("system", "user"))
 
@@ -406,17 +406,17 @@ class TestBobFallback:
 
         good_resp = self._make_good_response()
 
-        async def fake_post(client, url, key, payload):
+        async def fake_post(_client, url, _key, _payload):
             if "garbage" in url:
                 raise httpx.ConnectError("connection refused")
             return good_resp
 
         with patch.object(bob_client, "BOB_URL", "http://garbage.invalid"), \
-             patch.object(bob_client, "BOB_KEY", "bad-key"), \
-             patch.object(bob_client, "FALLBACK_URL", "http://real.fallback"), \
-             patch.object(bob_client, "FALLBACK_KEY", "good-key"), \
-             patch.object(bob_client, "FALLBACK_MODEL", "gpt-4o"), \
-             patch("bob_client._post", side_effect=fake_post):
+                patch.object(bob_client, "BOB_KEY", "bad-key"), \
+                patch.object(bob_client, "FALLBACK_URL", "http://real.fallback"), \
+                patch.object(bob_client, "FALLBACK_KEY", "good-key"), \
+                patch.object(bob_client, "FALLBACK_MODEL", "gpt-4o"), \
+                patch("bob_client._post", side_effect=fake_post):
 
             raw_json = asyncio.run(bob_client.analyze("system", "user"))
 

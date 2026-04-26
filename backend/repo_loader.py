@@ -39,7 +39,7 @@ def load_repo(path: str) -> dict[str, str]:
 
         try:
             content = fpath.read_text(encoding="utf-8", errors="ignore")
-        except Exception:
+        except OSError:
             continue
 
         # Skip empty and oversized files
@@ -114,7 +114,8 @@ def prioritize_files(
             priority_1.append(path)
             continue
 
-        is_test = any(t in path for t in ['__tests__', '.test.', '.spec.', 'test/'])
+        is_test = any(t in path for t in [
+                      '__tests__', '.test.', '.spec.', 'test/'])
         references_change = (
             any(basename in content for basename in changed_basenames) or
             any(f"'{sym}'" in content or f'"{sym}"' in content or f' {sym}(' in content
