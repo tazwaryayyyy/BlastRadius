@@ -48,8 +48,14 @@ FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
-# Absolute base path for demo assets
-BASE_DIR = Path(__file__).parent.parent
+# Absolute base path for demo assets.
+# In local dev, this resolves to repo root.
+# In container images, backend files may be copied to /app directly.
+HERE = Path(__file__).resolve().parent
+if (HERE / "demo_prs").exists() and (HERE / "demo_repo").exists():
+    BASE_DIR = HERE
+else:
+    BASE_DIR = HERE.parent
 
 
 # ── Helpers ───────────────────────────────────────────────────────
