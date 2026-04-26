@@ -2,7 +2,6 @@ services:
   - type: web
     name: blastradius-api
     runtime: docker
-    dockerfilePath: ./backend/Dockerfile
     dockerContext: .
     envVars:
       - key: BOB_API_URL
