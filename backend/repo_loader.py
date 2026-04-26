@@ -51,7 +51,8 @@ def load_repo(path: str) -> dict[str, str]:
         if lines and max((len(l) for l in lines), default=0) > MAX_LINE_LENGTH:
             continue
 
-        rel_path = str(fpath.relative_to(root))
+        # Always use forward slashes so paths match git diff output on Windows
+        rel_path = str(fpath.relative_to(root)).replace(os.sep, '/')
         files[rel_path] = content
 
     return files

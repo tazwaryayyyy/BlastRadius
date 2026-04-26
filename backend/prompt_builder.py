@@ -67,6 +67,13 @@ For each complete chain, assign risk:
   MEDIUM   = chain reaches secondary logic; some tests exist but gaps remain
   LOW      = chain is well-tested or has graceful fallback (try/catch, queue, etc.)
 
+STEP 3A — CONFIDENCE LABEL
+For each chain, assign a confidence level based on how directly the path is proven in code.
+  HIGH   = direct static import or explicit call chain shown in provided files
+  MEDIUM = one step inferred from surrounding code structure; still likely correct
+  LOW    = dynamic dispatch, indirect runtime wiring, or partial evidence only
+Use explicit uncertainty language in confidence_reason whenever anything is inferred.
+
 STEP 4 — TEST COVERAGE CHECK
 For each chain, check whether any file in __tests__/, *.test.*, or *.spec.* explicitly
 imports and calls a function in this chain's path. Set has_tests accordingly.
@@ -82,6 +89,8 @@ Produce ONLY the following JSON object. No preamble. No markdown. No backticks.
       "risk": "CRITICAL",
       "path": ["shared/rate_limiter.js", "api/routes/payments.js", "services/billing/process.js"],
       "symbols": ["applyRateLimit", "processPayment", "chargeCard"],
+      "confidence": "HIGH",
+      "confidence_reason": "Direct static import chain.",
       "has_tests": false,
       "test_files": [],
       "business_impact": "Payment retries will be blocked — halved rate window rejects legitimate Stripe retries. No test covers this.",
@@ -90,7 +99,12 @@ Produce ONLY the following JSON object. No preamble. No markdown. No backticks.
   ],
   "safe_paths": ["api/routes/health.js uses a rate-limit bypass — unaffected"],
   "risk_summary": {"CRITICAL": 1, "HIGH": 0, "MEDIUM": 1, "LOW": 1},
-  "merge_recommendation": "BLOCK MERGE — CRITICAL untested billing path exposed. Add tests for processPayment() before merging."
+  "merge_recommendation": "BLOCK MERGE — CRITICAL untested billing path exposed. Add tests for processPayment() before merging.",
+  "suggested_actions": [
+    "Add test for processPayment() covering rate limit window < 30s",
+    "Add retry backoff in billing/process.js before calling chargeCard()",
+    "Verify Stripe webhook retry interval against new windowMs value"
+  ]
 }
 """
 
@@ -126,7 +140,8 @@ def build_user_prompt(
     # ── 4. Changed symbols ────────────────────────────────────────
     if diff.symbols:
         sym_list = "\n".join(f"- `{s}`" for s in diff.symbols)
-        sections.append(f"## CHANGED SYMBOLS\nThe following symbols were modified in this PR:\n{sym_list}")
+        sections.append(
+            f"## CHANGED SYMBOLS\nThe following symbols were modified in this PR:\n{sym_list}")
     else:
         sections.append(
             "## CHANGED SYMBOLS\n"

@@ -68,6 +68,15 @@ def _parse_report(raw_json: str, pr_title: str | None) -> BlastRadiusReport:
         for lvl in ("CRITICAL", "HIGH", "MEDIUM", "LOW")
     })
 
+    # Normalise call chain confidence — Bob may return lowercase ("high" → "HIGH")
+    for chain in data.get("call_chains", []):
+        if isinstance(chain, dict) and "confidence" in chain:
+            chain["confidence"] = str(chain["confidence"]).upper()
+
+    # Ensure suggested_actions is always a list (Bob may return null or omit it)
+    if not isinstance(data.get("suggested_actions"), list):
+        data["suggested_actions"] = []
+
     data["pr_title"] = pr_title
 
     try:
@@ -103,7 +112,12 @@ async def _run_analysis(req: AnalyzeRequest) -> BlastRadiusReport:
         f"repo_files={len(all_files)}"
     )
 
-    raw_json = await bob_analyze(system, user)
+    try:
+        raw_json = await bob_analyze(system, user)
+    except ValueError as exc:
+        raise HTTPException(status_code=503, detail=str(exc))
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=str(exc))
     return _parse_report(raw_json, req.pr_title)
 
 
@@ -131,7 +145,7 @@ async def demo() -> BlastRadiusReport:
     if not diff_path.exists():
         raise HTTPException(status_code=404, detail="Demo diff not found")
 
-    diff_text = diff_path.read_text()
+    diff_text = diff_path.read_text(encoding="utf-8")
     req = AnalyzeRequest(
         diff=diff_text,
         repo_path="demo_repo",
@@ -177,7 +191,8 @@ async def stream_analysis(
             raw_json = "".join(accumulated)
             report = _parse_report(raw_json, pr_title)
             yield f"data: {json.dumps({'type': 'done', 'report': report.model_dump()})}\n\n"
-
+        except (ValueError, RuntimeError) as exc:
+            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
         except Exception as exc:
             yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
 
@@ -197,4 +212,4 @@ async def demo_diff() -> dict:
     diff_path = BASE_DIR / "demo_prs" / "pr_ratelimiter.diff"
     if not diff_path.exists():
         raise HTTPException(status_code=404, detail="Demo diff not found")
-    return {"diff": diff_path.read_text(), "pr_title": "fix: tighten rate limit window for security compliance"}
+    return {"diff": diff_path.read_text(encoding="utf-8"), "pr_title": "fix: tighten rate limit window for security compliance"}

@@ -1,0 +1,13 @@
+[MASTER]
+# Use the virtual environment's site-packages so pylint can resolve
+# third-party packages like pytest, fastapi, pydantic, etc.
+init-hook=
+    import sys, os
+    venv = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.venv', 'Lib', 'site-packages')
+    if os.path.isdir(venv):
+        sys.path.insert(0, venv)
+
+[MESSAGES CONTROL]
+# W1514 – open-without-encoding  (fixed in code; keep silenced as safety net)
+# W0201 – attribute-defined-outside-init (false positive on pytest setup_method)
+disable=W1514,W0201

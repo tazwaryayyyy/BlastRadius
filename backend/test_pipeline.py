@@ -6,6 +6,10 @@ Runs without a real Bob API — mocks the LLM call.
 Run: pytest test_pipeline.py -v
 """
 
+from models import BlastRadiusReport, RiskSummary, CallChain
+from prompt_builder import build_system_prompt, build_user_prompt
+from repo_loader import load_repo, build_file_tree, prioritize_files, get_context_bundle
+from diff_parser import parse_diff
 import json
 import sys
 import os
@@ -14,16 +18,13 @@ import pytest
 # Ensure backend dir is on path
 sys.path.insert(0, os.path.dirname(__file__))
 
-from diff_parser import parse_diff
-from repo_loader import load_repo, build_file_tree, prioritize_files, get_context_bundle
-from prompt_builder import build_system_prompt, build_user_prompt
-from models import BlastRadiusReport, RiskSummary, CallChain
-
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
 DEMO_DIFF = open(
-    os.path.join(os.path.dirname(__file__), "..", "demo_prs", "pr_ratelimiter.diff")
+    os.path.join(os.path.dirname(__file__), "..",
+                 "demo_prs", "pr_ratelimiter.diff"),
+    encoding="utf-8",
 ).read()
 
 DEMO_REPO_PATH = os.path.join(os.path.dirname(__file__), "..", "demo_repo")
@@ -41,6 +42,8 @@ MOCK_BOB_RESPONSE = {
                 "services/billing/stripe_client.js"
             ],
             "symbols": ["applyRateLimit", "handleCharge", "processPayment", "chargeCard"],
+            "confidence": "HIGH",
+            "confidence_reason": "Direct static import chain.",
             "has_tests": False,
             "test_files": [],
             "business_impact": "Payment retries blocked — halved rate window rejects Stripe retries. No test covers this path.",
@@ -51,6 +54,8 @@ MOCK_BOB_RESPONSE = {
             "risk": "MEDIUM",
             "path": ["shared/rate_limiter.js", "api/routes/auth.js"],
             "symbols": ["applyRateLimit", "loginUser"],
+            "confidence": "HIGH",
+            "confidence_reason": "Direct static import chain.",
             "has_tests": True,
             "test_files": ["__tests__/auth.test.js"],
             "business_impact": "Login rate limit tightened. Auth tests cover this path.",
@@ -61,6 +66,8 @@ MOCK_BOB_RESPONSE = {
             "risk": "LOW",
             "path": ["shared/rate_limiter.js", "api/routes/webhooks.js", "services/notifications/email.js"],
             "symbols": ["applyRateLimit", "handleNotification", "sendEmail"],
+            "confidence": "MEDIUM",
+            "confidence_reason": "Inferred via fallback handling path — verify manually.",
             "has_tests": True,
             "test_files": ["__tests__/webhooks.test.js"],
             "business_impact": "Notification rate limiting tightened. Graceful queue fallback — no data loss.",
@@ -69,7 +76,12 @@ MOCK_BOB_RESPONSE = {
     ],
     "safe_paths": ["api/routes/payments.js:getPaymentStatus uses http_client directly — unaffected"],
     "risk_summary": {"CRITICAL": 1, "HIGH": 0, "MEDIUM": 1, "LOW": 1},
-    "merge_recommendation": "BLOCK MERGE — CRITICAL untested billing path exposed. Add tests for processPayment() before merging."
+    "merge_recommendation": "BLOCK MERGE — CRITICAL untested billing path exposed. Add tests for processPayment() before merging.",
+    "suggested_actions": [
+        "Add test for processPayment() covering rate limit window < 30s",
+        "Add retry backoff in billing/process.js before calling chargeCard()",
+        "Verify Stripe webhook retry interval against new windowMs value"
+    ]
 }
 
 
@@ -145,7 +157,8 @@ class TestRepoLoader:
         ordered = prioritize_files(files, changed, ["applyRateLimit"])
         # payments.js, auth.js, webhooks.js all import rate_limiter
         # They should appear before http_client.js which doesn't
-        importer_indices = [i for i, p in enumerate(ordered) if "payments" in p or "auth" in p]
+        importer_indices = [i for i, p in enumerate(
+            ordered) if "payments" in p or "auth" in p]
         safe_indices = [i for i, p in enumerate(ordered) if "http_client" in p]
         if importer_indices and safe_indices:
             assert min(importer_indices) < min(safe_indices), \
@@ -162,6 +175,9 @@ class TestRepoLoader:
 # ── prompt_builder tests ───────────────────────────────────────────
 
 class TestPromptBuilder:
+    files: dict
+    diff: object
+
     def setup_method(self):
         self.files = load_repo(DEMO_REPO_PATH)
         self.diff = parse_diff(DEMO_DIFF)
@@ -191,6 +207,12 @@ class TestPromptBuilder:
         assert "YOUR TASK" in user
         assert "STEP 1" in user
         assert "STEP 5" in user
+
+    def test_user_prompt_mentions_confidence_and_actions(self):
+        user = build_user_prompt(self.files, self.diff)
+        assert '"confidence"' in user
+        assert '"confidence_reason"' in user
+        assert '"suggested_actions"' in user
 
     def test_user_prompt_ends_with_json_instruction(self):
         user = build_user_prompt(self.files, self.diff)
@@ -240,6 +262,15 @@ class TestModels:
         with pytest.raises(Exception):
             CallChain(
                 id="c1", risk="UNKNOWN", path=["a.js"], symbols=["fn"],
+                confidence="HIGH", confidence_reason="Direct static import chain.",
+                has_tests=False, business_impact="x", explanation="y"
+            )
+
+    def test_call_chain_requires_valid_confidence(self):
+        with pytest.raises(Exception):
+            CallChain(
+                id="c1", risk="LOW", path=["a.js"], symbols=["fn"],
+                confidence="UNKNOWN", confidence_reason="x",
                 has_tests=False, business_impact="x", explanation="y"
             )
 
@@ -252,6 +283,8 @@ class TestModels:
         dumped = report.model_dump()
         assert dumped["risk_summary"]["CRITICAL"] == 1
         assert len(dumped["call_chains"]) == 3
+        assert dumped["call_chains"][0]["confidence"] == "HIGH"
+        assert len(dumped["suggested_actions"]) == 3
 
 
 # ── Integration: full pipeline ─────────────────────────────────────
@@ -314,3 +347,116 @@ class TestFullPipeline:
         low = [c for c in report.call_chains if c.risk == "LOW"]
         assert len(low) == 1
         assert low[0].has_tests is True
+
+
+# ── Bob fallback tests ─────────────────────────────────────────────
+
+class TestBobFallback:
+    """
+    Verifies the primary→fallback path without any live API calls.
+    Patches bob_client module attributes and the internal _post helper.
+    """
+
+    def _make_good_response(self):
+        from unittest.mock import MagicMock
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.json.return_value = {
+            "choices": [{"message": {"content": json.dumps(MOCK_BOB_RESPONSE)}}]
+        }
+        resp.raise_for_status = MagicMock()
+        return resp
+
+    def test_fallback_triggers_when_primary_fails(self):
+        """Primary endpoint raises; fallback endpoint returns valid JSON."""
+        import asyncio
+        import httpx
+        from unittest.mock import AsyncMock, patch
+        import bob_client
+
+        good_resp = self._make_good_response()
+        calls = []
+
+        async def fake_post(client, url, key, payload):
+            calls.append(url)
+            if "garbage" in url:
+                raise httpx.ConnectError("connection refused")
+            return good_resp
+
+        with patch.object(bob_client, "BOB_URL", "http://garbage.invalid"), \
+             patch.object(bob_client, "BOB_KEY", "bad-key"), \
+             patch.object(bob_client, "FALLBACK_URL", "http://real.fallback"), \
+             patch.object(bob_client, "FALLBACK_KEY", "good-key"), \
+             patch.object(bob_client, "FALLBACK_MODEL", "gpt-4o"), \
+             patch("bob_client._post", side_effect=fake_post):
+
+            result = asyncio.run(bob_client.analyze("system", "user"))
+
+        assert "call_chains" in result, "Fallback must return valid JSON"
+        assert calls[0] == "http://garbage.invalid", "Primary was not tried first"
+        assert calls[1] == "http://real.fallback", "Fallback was not tried second"
+
+    def test_fallback_produces_valid_report(self):
+        """Full _parse_report round-trip on the fallback JSON output."""
+        import asyncio
+        import httpx
+        from unittest.mock import patch
+        import bob_client
+        from main import _parse_report
+
+        good_resp = self._make_good_response()
+
+        async def fake_post(client, url, key, payload):
+            if "garbage" in url:
+                raise httpx.ConnectError("connection refused")
+            return good_resp
+
+        with patch.object(bob_client, "BOB_URL", "http://garbage.invalid"), \
+             patch.object(bob_client, "BOB_KEY", "bad-key"), \
+             patch.object(bob_client, "FALLBACK_URL", "http://real.fallback"), \
+             patch.object(bob_client, "FALLBACK_KEY", "good-key"), \
+             patch.object(bob_client, "FALLBACK_MODEL", "gpt-4o"), \
+             patch("bob_client._post", side_effect=fake_post):
+
+            raw_json = asyncio.run(bob_client.analyze("system", "user"))
+
+        report = _parse_report(raw_json, "Test PR")
+
+        assert report.risk_summary.CRITICAL == 1
+        assert len(report.call_chains) == 3
+        assert "BLOCK" in report.merge_recommendation
+        assert len(report.suggested_actions) == 3
+
+    def test_lowercase_confidence_is_normalised(self):
+        """_parse_report must uppercase confidence even when Bob returns lowercase."""
+        from main import _parse_report
+
+        payload = json.dumps({
+            **MOCK_BOB_RESPONSE,
+            "call_chains": [
+                {**c, "confidence": c["confidence"].lower()}
+                for c in MOCK_BOB_RESPONSE["call_chains"]
+            ],
+        })
+        report = _parse_report(payload, "Test PR")
+
+        for chain in report.call_chains:
+            assert chain.confidence in ("HIGH", "MEDIUM", "LOW"), \
+                f"confidence must be uppercase, got: {chain.confidence!r}"
+
+    def test_missing_suggested_actions_defaults_to_empty(self):
+        """_parse_report must not crash when suggested_actions is absent."""
+        from main import _parse_report
+
+        payload = {k: v for k, v in MOCK_BOB_RESPONSE.items()
+                   if k != "suggested_actions"}
+        report = _parse_report(json.dumps(payload), "Test PR")
+        assert report.suggested_actions == []
+
+    def test_null_suggested_actions_defaults_to_empty(self):
+        """_parse_report must not crash when suggested_actions is null."""
+        from main import _parse_report
+
+        payload = {**MOCK_BOB_RESPONSE, "suggested_actions": None}
+        report = _parse_report(json.dumps(payload), "Test PR")
+        assert report.suggested_actions == []

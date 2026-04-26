@@ -14,6 +14,8 @@ class CallChain(BaseModel):
     risk: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
     path: list[str]
     symbols: list[str]
+    confidence: Literal["HIGH", "MEDIUM", "LOW"] = "MEDIUM"
+    confidence_reason: str = "Inferred via surrounding code structure — verify manually."
     has_tests: bool
     test_files: list[str] = Field(default_factory=list)
     business_impact: str
@@ -33,6 +35,7 @@ class BlastRadiusReport(BaseModel):
     safe_paths: list[str] = Field(default_factory=list)
     risk_summary: RiskSummary
     merge_recommendation: str
+    suggested_actions: list[str] = Field(default_factory=list)
     pr_title: Optional[str] = None
 
 

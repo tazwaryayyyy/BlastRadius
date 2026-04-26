@@ -17,25 +17,30 @@ const API_BASE = window.API_BASE || 'http://localhost:8000';
 let currentReport = null;
 
 // ── DOM refs ───────────────────────────────────────────────────────
-const demoBtn         = document.getElementById('demo-btn');
-const analyzeBtn      = document.getElementById('analyze-btn');
-const diffInput       = document.getElementById('diff-input');
-const graphIdle       = document.getElementById('graph-idle');
-const streamLog       = document.getElementById('stream-log');
-const streamContent   = document.getElementById('stream-content');
-const streamMetrics   = document.getElementById('stream-metrics');
-const detailPanel     = document.getElementById('detail-panel');
-const detailEmpty     = document.getElementById('detail-empty');
-const noChainsState   = document.getElementById('no-chains-state');
-const riskBadge       = document.getElementById('risk-badge');
-const prTitleEl       = document.getElementById('pr-title');
-const riskSummaryEl   = document.getElementById('risk-summary');
-const mergeVerdictEl  = document.getElementById('merge-verdict');
-const recommendBar    = document.getElementById('recommendation-bar');
-const bobMetrics      = document.getElementById('bob-metrics');
+const demoBtn = document.getElementById('demo-btn');
+const analyzeBtn = document.getElementById('analyze-btn');
+const diffInput = document.getElementById('diff-input');
+const graphIdle = document.getElementById('graph-idle');
+const streamLog = document.getElementById('stream-log');
+const streamContent = document.getElementById('stream-content');
+const streamMetrics = document.getElementById('stream-metrics');
+const detailPanel = document.getElementById('detail-panel');
+const detailEmpty = document.getElementById('detail-empty');
+const noChainsState = document.getElementById('no-chains-state');
+const riskBadge = document.getElementById('risk-badge');
+const riskScoreEl = document.getElementById('risk-score');
+const riskScoreValue = document.getElementById('risk-score-value');
+const prTitleEl = document.getElementById('pr-title');
+const riskSummaryEl = document.getElementById('risk-summary');
+const mergeVerdictEl = document.getElementById('merge-verdict');
+const recommendBar = document.getElementById('recommendation-bar');
+const suggestedActionsEl = document.getElementById('suggested-actions');
+const bobMetrics = document.getElementById('bob-metrics');
 
 // Analysis timing
 let analysisStartTime = null;
+let streamTokenCount = 0;
+let streamSteps = [];
 
 
 // ── Init ───────────────────────────────────────────────────────────
@@ -121,6 +126,7 @@ async function streamAnalysis(diff, repoPath, prTitle) {
 
       if (data.type === 'done') {
         es.close();
+        finalizeStreamSteps(data.report);
         hideStreamLog();
         renderReport(data.report);
         setLoading(false);
@@ -197,11 +203,14 @@ function renderReport(report) {
     riskBadge.className = topRisk;
   }
 
+  renderRiskScore(computeRiskScore(report));
+
   // Risk summary counts
   renderRiskSummary(report.risk_summary);
 
   // Merge recommendation
   renderMergeVerdict(report.merge_recommendation);
+  renderSuggestedActions(report.suggested_actions || []);
 
   // Chain list — handle empty state
   if (report.call_chains.length === 0) {
@@ -250,9 +259,8 @@ function buildChainCard(chain) {
   const pathHtml = chain.path.map((p, i) => {
     const name = p.split('/').pop();
     const isChanged = i === 0;
-    return `<span class="node${isChanged ? ' changed' : ''}">${name}</span>${
-      i < chain.path.length - 1 ? '<span class="arrow">→</span>' : ''
-    }`;
+    return `<span class="node${isChanged ? ' changed' : ''}">${name}</span>${i < chain.path.length - 1 ? '<span class="arrow">→</span>' : ''
+      }`;
   }).join('');
 
   const testHtml = chain.has_tests
@@ -265,11 +273,18 @@ function buildChainCard(chain) {
        </div>`
     : '';
 
+  const confLevel = (chain.confidence || 'MEDIUM').toUpperCase();
+  const confidence = `
+    <div class="chain-confidence confidence-${confLevel}">
+      Confidence: ${confLevel} · ${escapeHtml(chain.confidence_reason || '')}
+    </div>`;
+
   return `
     <div class="chain-card risk-${chain.risk}" data-chain-id="${chain.id}">
       <div class="chain-risk-badge">${chain.risk}</div>
       <div class="chain-path">${pathHtml}</div>
       <div class="chain-impact">${chain.business_impact}</div>
+      ${confidence}
       ${testHtml}
       ${testFiles}
       <div class="chain-explanation">${chain.explanation}</div>
@@ -302,9 +317,9 @@ function onNodeClick(node, report) {
 function renderRiskSummary(summary) {
   const levels = [
     { key: 'CRITICAL', cls: 'critical' },
-    { key: 'HIGH',     cls: 'high'     },
-    { key: 'MEDIUM',   cls: 'medium'   },
-    { key: 'LOW',      cls: 'low'      },
+    { key: 'HIGH', cls: 'high' },
+    { key: 'MEDIUM', cls: 'medium' },
+    { key: 'LOW', cls: 'low' },
   ];
 
   riskSummaryEl.style.display = 'flex';
@@ -330,12 +345,68 @@ function renderMergeVerdict(recommendation) {
 }
 
 
+function renderSuggestedActions(actions) {
+  if (!suggestedActionsEl) return;
+  if (!actions.length) {
+    suggestedActionsEl.innerHTML = '';
+    suggestedActionsEl.style.display = 'none';
+    return;
+  }
+
+  suggestedActionsEl.style.display = 'block';
+  suggestedActionsEl.innerHTML = `
+    <div class="actions-title">What to do before merging</div>
+    ${actions.map((action) => `
+      <label class="action-item">
+        <input type="checkbox" />
+        <span>${escapeHtml(action)}</span>
+      </label>
+    `).join('')}
+  `;
+}
+
+
+function computeRiskScore(report) {
+  let score = 0;
+  const chains = report.call_chains || [];
+
+  chains.forEach((chain) => {
+    const risk = (chain.risk || '').toUpperCase();
+    if (risk === 'CRITICAL') score += 40;
+    else if (risk === 'HIGH') score += 25;
+    else if (risk === 'MEDIUM') score += 10;
+    else score += 3;
+
+    if (!chain.has_tests) score += 15;
+    score += (chain.path?.length || 0) * 2;
+
+    const conf = (chain.confidence || '').toUpperCase();
+    if (conf === 'LOW') score += 8;
+    else if (conf === 'MEDIUM') score += 4;
+  });
+
+  return Math.min(score, 100);
+}
+
+
+function renderRiskScore(score) {
+  if (!riskScoreEl || !riskScoreValue) return;
+
+  riskScoreValue.textContent = String(score);
+  riskScoreEl.className = score >= 70
+    ? 'score-high'
+    : score >= 40
+      ? 'score-medium'
+      : 'score-low';
+}
+
+
 // ── Helpers ────────────────────────────────────────────────────────
 function getTopRisk(summary) {
   if (summary.CRITICAL > 0) return 'CRITICAL';
-  if (summary.HIGH > 0)     return 'HIGH';
-  if (summary.MEDIUM > 0)   return 'MEDIUM';
-  if (summary.LOW > 0)      return 'LOW';
+  if (summary.HIGH > 0) return 'HIGH';
+  if (summary.MEDIUM > 0) return 'MEDIUM';
+  if (summary.LOW > 0) return 'LOW';
   return null;
 }
 
@@ -354,19 +425,29 @@ function clearUI() {
   if (noChainsState) noChainsState.style.display = 'none';
   riskBadge.className = '';
   riskBadge.style.display = 'none';
+  if (riskScoreValue) riskScoreValue.textContent = '0';
+  if (riskScoreEl) riskScoreEl.className = 'score-neutral';
   riskSummaryEl.style.display = 'none';
   riskSummaryEl.innerHTML = '';
   mergeVerdictEl.style.display = 'none';
   recommendBar.style.display = 'none';
+  if (suggestedActionsEl) {
+    suggestedActionsEl.innerHTML = '';
+    suggestedActionsEl.style.display = 'none';
+  }
   if (bobMetrics) bobMetrics.style.display = 'none';
   analysisStartTime = null;
+  streamTokenCount = 0;
+  streamSteps = [];
   DiffViewer.clearDiff('diff-container');
 }
 
 
 function showStreamLog() {
   streamLog.classList.add('visible');
-  streamContent.textContent = '';
+  streamTokenCount = 0;
+  streamSteps = [];
+  renderStreamStep('Identifying changed symbols...');
 }
 
 
@@ -376,8 +457,59 @@ function hideStreamLog() {
 
 
 function appendStreamToken(token) {
-  streamContent.textContent += token;
+  streamTokenCount += token.length;
+
+  if (streamTokenCount >= 80) renderStreamStep('Tracing callers of changed symbols...');
+  if (streamTokenCount >= 180) renderStreamStep('Building upstream chains to entry points...');
+  if (streamTokenCount >= 320) renderStreamStep('Checking test coverage...');
+
   streamLog.scrollTop = streamLog.scrollHeight;
+}
+
+
+function finalizeStreamSteps(report) {
+  const chain = (report.call_chains || [])[0];
+
+  if (chain?.symbols?.[0]) {
+    renderStreamStep(`Tracing callers of ${chain.symbols[0]}...`);
+  }
+
+  if (chain?.path?.[1]) {
+    renderStreamStep(`Found usage in ${chain.path[1]}...`);
+  }
+
+  if (chain?.symbols?.[1]) {
+    renderStreamStep(`Tracing callers of ${chain.symbols[1]}...`);
+  }
+
+  if (chain?.path?.length > 2) {
+    renderStreamStep(`Found ${chain.path.slice(2).join(' -> ')} in chain...`);
+  }
+
+  if (chain) {
+    renderStreamStep(chain.has_tests ? 'Test coverage found for this path.' : 'No tests found for this path...');
+    renderStreamStep(`Risk classification: ${chain.risk}`);
+  }
+}
+
+
+function renderStreamStep(message) {
+  if (!streamContent || streamSteps.includes(message)) return;
+
+  streamSteps.push(message);
+  streamContent.innerHTML = streamSteps
+    .map((step) => `<div class="stream-step">&#9656; ${escapeHtml(step)}</div>`)
+    .join('');
+}
+
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
 }
 
 

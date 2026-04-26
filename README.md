@@ -19,17 +19,17 @@ this affect downstream?**
 
 ## Why IBM Bob?
 
-Most code analysis tools work file by file. They see what changed. They don't see what that change reaches.
+Traditional analyzers can be precise, but they take time to configure and usually end in reports nobody reads. BlastRadius turns the same question into a 30-second PR workflow engineers will actually use.
 
-Bob holds the **entire repository in context simultaneously** — every file, every import chain, every call relationship. That's not a feature. It's the only way this product is possible.
+Bob holds the **entire repository in context simultaneously** so the output is fast, readable, and tied to the pull request instead of a separate analysis queue.
 
 Specifically, Bob:
 - Traces multi-hop call chains across the full codebase (not just direct imports)
-- Detects dynamic call patterns that static analysis tools miss
+- Flags lower-confidence paths explicitly when runtime wiring or dynamic dispatch requires manual verification
 - Correlates changed symbols against the complete test suite to find coverage gaps
 - Produces causal explanations — *why* a path is risky, not just *that* it exists
 
-Replace Bob with a file-level tool and BlastRadius becomes a broken diff viewer. The full-repo context is the product.
+The value claim is speed, usability, and workflow integration: full-repo impact analysis in plain English, inside the PR, before merge.
 
 ---
 
@@ -160,6 +160,8 @@ npx serve .          # or python -m http.server 3000
       "risk": "CRITICAL",
       "path": ["shared/rate_limiter.js", "api/routes/payments.js", "services/billing/process.js", "services/billing/stripe_client.js"],
       "symbols": ["applyRateLimit", "handleCharge", "processPayment", "chargeCard"],
+      "confidence": "HIGH",
+      "confidence_reason": "Direct static import chain.",
       "has_tests": false,
       "test_files": [],
       "business_impact": "Payment retries will be blocked — halved rate window rejects Stripe retries. No test covers this path.",
@@ -170,6 +172,8 @@ npx serve .          # or python -m http.server 3000
       "risk": "MEDIUM",
       "path": ["shared/rate_limiter.js", "api/routes/auth.js"],
       "symbols": ["applyRateLimit", "loginUser"],
+      "confidence": "HIGH",
+      "confidence_reason": "Direct static import chain.",
       "has_tests": true,
       "test_files": ["__tests__/auth.test.js"],
       "business_impact": "Login rate limiting tightened. Auth tests cover this path — lower risk.",
@@ -180,6 +184,8 @@ npx serve .          # or python -m http.server 3000
       "risk": "LOW",
       "path": ["shared/rate_limiter.js", "api/routes/webhooks.js", "services/notifications/email.js"],
       "symbols": ["applyRateLimit", "handleNotification", "sendEmail"],
+      "confidence": "MEDIUM",
+      "confidence_reason": "Inferred via fallback handling path — verify manually.",
       "has_tests": true,
       "test_files": ["__tests__/webhooks.test.js"],
       "business_impact": "Notification rate limiting tightened. Graceful queue fallback prevents data loss.",
@@ -189,6 +195,11 @@ npx serve .          # or python -m http.server 3000
   "safe_paths": ["api/routes/payments.js:getPaymentStatus uses http_client directly — not affected"],
   "risk_summary": { "CRITICAL": 1, "HIGH": 0, "MEDIUM": 1, "LOW": 1 },
   "merge_recommendation": "BLOCK MERGE — CRITICAL untested billing path exposed. Add tests for processPayment() and handleCharge() before merging.",
+  "suggested_actions": [
+    "Add test for processPayment() covering rate limit window < 30s",
+    "Add retry backoff in billing/process.js before calling chargeCard()",
+    "Verify Stripe webhook retry interval against new windowMs value"
+  ],
   "pr_title": "fix: tighten rate limit window for security compliance"
 }
 ```
@@ -204,9 +215,10 @@ npx serve .          # or python -m http.server 3000
    - Green node (LOW) — webhooks, safe, has tests
    - Yellow node (MEDIUM) — auth, partial risk, has tests
    - **Red pulsing node (CRITICAL) — billing, no tests**
-5. **Click the red node** — right panel shows the full chain, Bob's explanation, no-test warning.
-6. **Read the merge verdict** — "BLOCK MERGE — CRITICAL untested billing path exposed."
-7. **Punchline**: "Three lines changed. CI passed. Two devs approved it. Bob caught what they couldn't."
+5. **Click the red node** — right panel shows the full chain, confidence label, and no-test warning.
+6. **Read the header** — the risk score spikes and the verdict blocks merge.
+7. **Use the checklist** — suggested actions tell the reviewer what to do before merge.
+8. **Punchline**: "We're not chasing rare disasters. We're catching the hidden breakages that cause 2am pages every week."
 
 ---
 
@@ -238,7 +250,7 @@ npx serve .          # or python -m http.server 3000
 | Works on any diff / any language | ✓ | ✓ | ✓ | ✓ |
 | Visual blast radius graph | ✓ | ✗ | ✗ | ✗ |
 
-The key distinction: every tool in this table tells you if your code is *good*. BlastRadius tells you if merging it is *safe*.
+The key distinction: every tool in this table tells you if your code is *good*. BlastRadius tells you if merging it is *safe*, fast enough to use on every PR, and clear enough that people will act on it.
 
 ---
 
