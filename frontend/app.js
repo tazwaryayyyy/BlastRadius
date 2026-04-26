@@ -62,7 +62,15 @@ async function runDemo() {
   try {
     // Load the diff text for the diff viewer
     const diffResp = await fetch(`${API_BASE}/api/demo/diff`);
+    if (!diffResp.ok) {
+      throw new Error(`Demo diff request failed (${diffResp.status})`);
+    }
+
     const { diff, pr_title } = await diffResp.json();
+    if (typeof diff !== 'string' || !diff.trim()) {
+      throw new Error('Demo diff payload is missing or invalid.');
+    }
+
     DiffViewer.renderDiff('diff-container', diff, []);
 
     if (prTitleEl) prTitleEl.textContent = pr_title;
