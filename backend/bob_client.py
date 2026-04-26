@@ -18,16 +18,16 @@ from typing import AsyncIterator
 logger = logging.getLogger(__name__)
 
 # ── Config ────────────────────────────────────────────────────────
-BOB_URL     = os.getenv("BOB_API_URL", "").rstrip("/")
-BOB_KEY     = os.getenv("BOB_API_KEY", "")
-BOB_MODEL   = os.getenv("BOB_MODEL", "bob-v1")
+BOB_URL = os.getenv("BOB_API_URL", "").rstrip("/")
+BOB_KEY = os.getenv("BOB_API_KEY", "")
+BOB_MODEL = os.getenv("BOB_MODEL", "bob-v1")
 
-FALLBACK_URL   = os.getenv("BOB_FALLBACK_URL", "").rstrip("/")
-FALLBACK_KEY   = os.getenv("BOB_FALLBACK_API_KEY", "")
+FALLBACK_URL = os.getenv("BOB_FALLBACK_URL", "").rstrip("/")
+FALLBACK_KEY = os.getenv("BOB_FALLBACK_API_KEY", "")
 FALLBACK_MODEL = os.getenv("BOB_FALLBACK_MODEL", "gpt-4o")
 
 REQUEST_TIMEOUT = 120.0
-MAX_RETRIES     = 2
+MAX_RETRIES = 2
 
 
 def _build_payload(system: str, user: str, model: str, stream: bool = False) -> dict:
@@ -68,7 +68,11 @@ async def _post(
             )
             if response.status_code in (429, 503) and attempt < MAX_RETRIES:
                 wait = 2 ** attempt
-                logger.warning(f"Rate limited ({response.status_code}), retrying in {wait}s…")
+                logger.warning(
+                    "Rate limited (%s), retrying in %ss...",
+                    response.status_code,
+                    wait,
+                )
                 await asyncio.sleep(wait)
                 continue
             response.raise_for_status()
@@ -120,12 +124,13 @@ async def analyze(system: str, user: str) -> str:
                 response = await _post(client, BOB_URL, BOB_KEY, payload)
                 raw = _extract_text(response.json())
                 return _clean_json(raw)
-            except Exception as exc:
-                logger.warning(f"Bob primary failed: {exc}. Trying fallback…")
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning(
+                    "Bob primary failed: %s. Trying fallback...", exc)
 
         # Fallback to OpenAI-compatible endpoint
         if FALLBACK_URL:
-            logger.info(f"Calling fallback ({FALLBACK_MODEL})…")
+            logger.info("Calling fallback (%s)...", FALLBACK_MODEL)
             payload = _build_payload(system, user, FALLBACK_MODEL)
             response = await _post(client, FALLBACK_URL, FALLBACK_KEY, payload)
             raw = _extract_text(response.json())
@@ -171,9 +176,10 @@ async def analyze_stream(system: str, user: str) -> AsyncIterator[str]:
                             yield content
                     except (json.JSONDecodeError, KeyError):
                         continue
-    except Exception as exc:
+    except Exception as exc:  # pylint: disable=broad-exception-caught
         # Graceful degradation: fall back to non-streaming
-        logger.warning(f"Streaming failed: {exc}. Falling back to batch mode…")
+        logger.warning(
+            "Streaming failed: %s. Falling back to batch mode...", exc)
         result = await analyze(system, user)
         # Simulate streaming with small chunks
         chunk_size = 12

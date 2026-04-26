@@ -14,7 +14,7 @@ SKIP_DIRS = {
 
 MAX_FILE_CHARS = 50_000   # Skip files larger than this (likely generated)
 MAX_LINE_LENGTH = 500      # Skip minified files
-TOTAL_CONTEXT_LIMIT = 90_000  # Soft cap on total chars sent to Bob
+TOTAL_CONTEXT_LIMIT = 35_000  # Soft cap on total chars sent to Bob
 
 
 def load_repo(path: str) -> dict[str, str]:
@@ -136,6 +136,7 @@ def get_context_bundle(
     all_files: dict[str, str],
     changed_files: list[str],
     symbols: list[str],
+    context_limit: int | None = None,
 ) -> dict[str, str]:
     """
     Return a subset of files within the context limit, priority-ordered.
@@ -143,10 +144,12 @@ def get_context_bundle(
     ordered_paths = prioritize_files(all_files, changed_files, symbols)
     bundle: dict[str, str] = {}
     total_chars = 0
+    limit = TOTAL_CONTEXT_LIMIT if context_limit is None else max(
+        2_000, context_limit)
 
     for path in ordered_paths:
         content = all_files[path]
-        if total_chars + len(content) > TOTAL_CONTEXT_LIMIT:
+        if total_chars + len(content) > limit:
             break
         bundle[path] = content
         total_chars += len(content)

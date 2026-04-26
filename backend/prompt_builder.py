@@ -6,7 +6,7 @@ Design principles:
 - System prompt is short (<100 words). All reasoning load goes in the user turn.
 - File contents wrapped in fenced code blocks with filenames as headers.
 - Step-by-step task instruction BEFORE the JSON format forces Bob to reason
-  before generating output, dramatically reducing hallucination.
+    before generating output, dramatically reducing hallucination.
 - Hard "Output ONLY valid JSON" at the end prevents markdown wrapping.
 """
 
@@ -62,16 +62,16 @@ Build the complete chain from changed file → entry point.
 
 STEP 3 — RISK CLASSIFICATION
 For each complete chain, assign risk:
-  CRITICAL = chain reaches financial, auth, or data-mutation logic AND has no test coverage
-  HIGH     = chain reaches core business logic with partial or no test coverage
-  MEDIUM   = chain reaches secondary logic; some tests exist but gaps remain
-  LOW      = chain is well-tested or has graceful fallback (try/catch, queue, etc.)
+    CRITICAL = chain reaches financial, auth, or data-mutation logic AND has no test coverage
+    HIGH     = chain reaches core business logic with partial or no test coverage
+    MEDIUM   = chain reaches secondary logic; some tests exist but gaps remain
+    LOW      = chain is well-tested or has graceful fallback (try/catch, queue, etc.)
 
 STEP 3A — CONFIDENCE LABEL
 For each chain, assign a confidence level based on how directly the path is proven in code.
-  HIGH   = direct static import or explicit call chain shown in provided files
-  MEDIUM = one step inferred from surrounding code structure; still likely correct
-  LOW    = dynamic dispatch, indirect runtime wiring, or partial evidence only
+    HIGH   = direct static import or explicit call chain shown in provided files
+    MEDIUM = one step inferred from surrounding code structure; still likely correct
+    LOW    = dynamic dispatch, indirect runtime wiring, or partial evidence only
 Use explicit uncertainty language in confidence_reason whenever anything is inferred.
 
 STEP 4 — TEST COVERAGE CHECK
@@ -82,8 +82,8 @@ STEP 5 — OUTPUT
 Produce ONLY the following JSON object. No preamble. No markdown. No backticks.
 
 {
-  "changed_symbols": ["<list of changed symbol names>"],
-  "call_chains": [
+    "changed_symbols": ["<list of changed symbol names>"],
+    "call_chains": [
     {
       "id": "chain_1",
       "risk": "CRITICAL",
@@ -96,15 +96,15 @@ Produce ONLY the following JSON object. No preamble. No markdown. No backticks.
       "business_impact": "Payment retries will be blocked — halved rate window rejects legitimate Stripe retries. No test covers this.",
       "explanation": "applyRateLimit() exported from rate_limiter.js is called at payments.js:47 inside processPayment(), which calls chargeCard() in billing/process.js. No file in __tests__/ imports or calls processPayment."
     }
-  ],
-  "safe_paths": ["api/routes/health.js uses a rate-limit bypass — unaffected"],
-  "risk_summary": {"CRITICAL": 1, "HIGH": 0, "MEDIUM": 1, "LOW": 1},
-  "merge_recommendation": "BLOCK MERGE — CRITICAL untested billing path exposed. Add tests for processPayment() before merging.",
-  "suggested_actions": [
+    ],
+    "safe_paths": ["api/routes/health.js uses a rate-limit bypass — unaffected"],
+    "risk_summary": {"CRITICAL": 1, "HIGH": 0, "MEDIUM": 1, "LOW": 1},
+    "merge_recommendation": "BLOCK MERGE — CRITICAL untested billing path exposed. Add tests for processPayment() before merging.",
+    "suggested_actions": [
     "Add test for processPayment() covering rate limit window < 30s",
     "Add retry backoff in billing/process.js before calling chargeCard()",
     "Verify Stripe webhook retry interval against new windowMs value"
-  ]
+    ]
 }
 """
 
@@ -122,22 +122,35 @@ def build_user_prompt(
 ) -> str:
     sections: list[str] = []
 
-    # ── 1. File tree ──────────────────────────────────────────────
-    file_tree = build_file_tree(list(all_files.keys()))
-    sections.append(f"## REPOSITORY STRUCTURE\n```\n{file_tree}\n```")
+    # ── 1. Repository file contents (context-limited, priority-ordered) ──
+    # Keep prompt under provider payload limits by adapting context to diff size.
+    # Larger diffs consume more budget, so repository context is reduced accordingly.
+    dynamic_repo_budget = max(12_000, 38_000 - len(diff.raw_diff))
+    bundle = get_context_bundle(
+        all_files,
+        diff.changed_files,
+        diff.symbols,
+        context_limit=dynamic_repo_budget,
+    )
 
-    # ── 2. Repository file contents (context-limited, priority-ordered) ──
-    bundle = get_context_bundle(all_files, diff.changed_files, diff.symbols)
+    # ── 2. File tree (only included files, not the entire repository) ─────
+    file_tree = build_file_tree(list(bundle.keys()))
+    omitted = max(0, len(all_files) - len(bundle))
+    omitted_note = f"\n(Omitted {omitted} lower-priority files to fit model context.)" if omitted else ""
+    sections.append(
+        f"## REPOSITORY STRUCTURE\n```\n{file_tree}\n```{omitted_note}")
+
+    # ── 3. Repository file contents ───────────────────────────────
     file_blocks: list[str] = []
     for path, content in bundle.items():
         lang = _ext(path)
         file_blocks.append(f"### {path}\n```{lang}\n{content}\n```")
     sections.append("## REPOSITORY FILES\n\n" + "\n\n".join(file_blocks))
 
-    # ── 3. PR diff ────────────────────────────────────────────────
+    # ── 4. PR diff ────────────────────────────────────────────────
     sections.append(f"## PR DIFF\n```diff\n{diff.raw_diff}\n```")
 
-    # ── 4. Changed symbols ────────────────────────────────────────
+    # ── 5. Changed symbols ────────────────────────────────────────
     if diff.symbols:
         sym_list = "\n".join(f"- `{s}`" for s in diff.symbols)
         sections.append(
@@ -149,7 +162,7 @@ def build_user_prompt(
             "Infer changed behaviour from the diff above."
         )
 
-    # ── 5. Task instruction ───────────────────────────────────────
+    # ── 6. Task instruction ───────────────────────────────────────
     sections.append(TASK_BLOCK.strip())
 
     return "\n\n".join(sections)
