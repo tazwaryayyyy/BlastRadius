@@ -1,147 +1,142 @@
 <!DOCTYPE html>
 <html lang="en">
-
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>BlastRadius — Pre-merge Impact Intelligence</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link
-    href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;700&display=swap"
-    rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600;700;800&family=Geist+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles.css" />
-
-  <!-- D3 v7 -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/d3/7.9.0/d3.min.js"></script>
 </head>
-
 <body>
-  <div id="app">
 
-    <!-- ── Header ──────────────────────────────────────────────── -->
-    <header id="header">
-      <div class="logo">Blast<span>Radius</span></div>
-      <div class="pr-title" id="pr-title">No PR loaded — press Run Demo to begin</div>
-      <div id="bob-metrics"></div>
-      <div id="risk-score" class="score-neutral">
-        <span class="score-label">Risk Score</span>
-        <span id="risk-score-value">0</span>
+<!-- Ambient atmosphere layers -->
+<div id="ambient-1"></div>
+<div id="ambient-2"></div>
+<div id="ambient-3"></div>
+<div id="grid-overlay"></div>
+
+<div id="app">
+
+  <!-- Header -->
+  <header id="header">
+    <div class="logo">Blast<span>Radius</span></div>
+    <div class="pr-title" id="pr-title">No PR loaded — press Run Demo to begin</div>
+    <div id="bob-metrics"></div>
+    <div id="risk-score" class="score-neutral">
+      <span class="score-label">Risk Score</span>
+      <span id="risk-score-value">0</span>
+    </div>
+    <div id="risk-badge"></div>
+    <div class="bob-badge-wrap">
+      <span class="bob-powered">Powered by</span>
+      <span class="bob-badge">IBM Bob</span>
+    </div>
+    <button id="demo-btn">Run Demo</button>
+  </header>
+
+  <!-- Main 3-column layout -->
+  <div id="main">
+
+    <!-- LEFT: Diff viewer -->
+    <div class="panel" id="left-panel">
+      <div class="panel-header">
+        <span class="panel-title">PR Diff</span>
+        <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='flex'">
+          Custom PR
+        </button>
       </div>
-      <div id="risk-badge"></div>
-      <div class="bob-badge-wrap">
-        <span class="bob-powered">Powered by</span>
-        <span class="bob-badge">IBM Bob</span>
-      </div>
-      <button id="demo-btn">Run Demo</button>
-    </header>
-
-    <!-- ── Main 3-column layout ────────────────────────────────── -->
-    <div id="main">
-
-      <!-- LEFT: Diff viewer -->
-      <div class="panel" id="left-panel">
-        <div class="panel-header">
-          <span class="panel-title">PR Diff</span>
-          <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='flex'">
-            Custom PR
-          </button>
-        </div>
-        <div class="panel-body">
-          <div id="diff-container">
-            <div class="diff-placeholder">
-              The diff will appear here.<br />
-              Press <strong>Run Demo</strong> to load a pre-seeded
-              rate limiter PR — or paste your own diff above.
-            </div>
+      <div class="panel-body">
+        <div id="diff-container">
+          <div class="diff-placeholder">
+            The diff will appear here.<br />
+            Press <strong>Run Demo</strong> to load a pre-seeded
+            rate limiter PR — or paste your own diff above.
           </div>
         </div>
-      </div>
-
-      <!-- CENTER: Graph canvas -->
-      <div class="panel" id="graph-panel">
-        <div class="panel-header">
-          <span class="panel-title">Blast Radius Graph</span>
-          <div id="risk-summary"></div>
-        </div>
-
-        <div id="graph-canvas">
-          <!-- Idle state -->
-          <div id="graph-idle">
-            <div class="idle-icon">◎</div>
-            <div class="idle-text">
-              Blast radius graph will render here.<br />
-              Nodes = files &nbsp;·&nbsp; Color = risk level<br />
-              Dashed border = no test coverage
-            </div>
-            <button id="idle-demo-btn" class="btn-sm" onclick="document.getElementById('demo-btn').click()">
-              Run Demo
-            </button>
-          </div>
-        </div>
-
-        <!-- Bob streaming log -->
-        <div id="stream-log">
-          <div class="stream-head">
-            <span class="stream-label">IBM Bob is tracing call chains…</span>
-            <span id="stream-metrics"></span>
-          </div>
-          <div id="stream-content"></div>
-        </div>
-
-        <!-- Merge recommendation -->
-        <div id="recommendation-bar">
-          <div id="merge-verdict"></div>
-          <div id="suggested-actions"></div>
-        </div>
-      </div>
-
-      <!-- RIGHT: Chain detail panel -->
-      <div class="panel" id="right-panel">
-        <div class="panel-header">
-          <span class="panel-title">Impact Chains</span>
-        </div>
-        <div class="panel-body">
-          <div id="detail-empty">
-            Click a node in the graph<br />to see its blast radius chain.
-          </div>
-          <div id="no-chains-state">
-            <div class="no-chains-icon">✓</div>
-            <div class="no-chains-title">No blast radius detected
-            </div>
-            <div class="no-chains-copy">IBM Bob traced all call chains<br />and
-              found no downstream impact.<br />Safe to merge.</div>
-          </div>
-          <div id="detail-panel"></div>
-        </div>
-      </div>
-
-    </div><!-- /#main -->
-  </div><!-- /#app -->
-
-
-  <!-- ── Custom PR modal ───────────────────────────────────────────── -->
-  <div id="custom-modal">
-    <div class="custom-modal-body">
-      <div class="custom-modal-header">
-        <span class="custom-modal-title">Paste a unified diff</span>
-        <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='none'">✕</button>
-      </div>
-      <textarea id="diff-input" rows="16"
-        placeholder="Paste unified diff output here (git diff HEAD, PR diff, etc.)..."></textarea>
-      <div class="custom-modal-actions">
-        <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='none'">Cancel</button>
-        <button id="analyze-btn">Analyze PR</button>
       </div>
     </div>
+
+    <!-- CENTER: Graph canvas -->
+    <div class="panel" id="graph-panel">
+      <div class="panel-header">
+        <span class="panel-title">Blast Radius Graph</span>
+        <div id="risk-summary"></div>
+      </div>
+
+      <div id="graph-canvas">
+        <div id="graph-idle">
+          <div class="idle-icon">◎</div>
+          <div class="idle-text">
+            Blast radius graph will render here.<br />
+            Nodes = files &nbsp;·&nbsp; Color = risk level<br />
+            Dashed border = no test coverage
+          </div>
+          <button id="idle-demo-btn" class="btn-sm"
+            onclick="document.getElementById('demo-btn').click()">
+            ▶ Run Demo
+          </button>
+        </div>
+      </div>
+
+      <!-- Bob streaming log -->
+      <div id="stream-log">
+        <div class="stream-head">
+          <span class="stream-label">IBM Bob is tracing call chains…</span>
+          <span id="stream-metrics"></span>
+        </div>
+        <div id="stream-content"></div>
+      </div>
+
+      <!-- Merge recommendation -->
+      <div id="recommendation-bar">
+        <div id="merge-verdict"></div>
+        <div id="suggested-actions"></div>
+      </div>
+    </div>
+
+    <!-- RIGHT: Chain detail panel -->
+    <div class="panel" id="right-panel">
+      <div class="panel-header">
+        <span class="panel-title">Impact Chains</span>
+      </div>
+      <div class="panel-body">
+        <div id="detail-empty">
+          Click a node in the graph<br />to see its blast radius chain.
+        </div>
+        <div id="no-chains-state">
+          <div class="no-chains-icon">✓</div>
+          <div class="no-chains-title">No blast radius detected</div>
+          <div class="no-chains-copy">IBM Bob traced all call chains<br />and found no downstream impact.<br />Safe to merge.</div>
+        </div>
+        <div id="detail-panel"></div>
+      </div>
+    </div>
+
   </div>
+</div>
 
+<!-- Custom PR modal -->
+<div id="custom-modal">
+  <div class="custom-modal-body">
+    <div class="custom-modal-header">
+      <span class="custom-modal-title">Paste a unified diff</span>
+      <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='none'">✕</button>
+    </div>
+    <textarea id="diff-input" rows="16"
+      placeholder="Paste unified diff output here (git diff HEAD, PR diff, etc.)..."></textarea>
+    <div class="custom-modal-actions">
+      <button class="btn-sm" onclick="document.getElementById('custom-modal').style.display='none'">Cancel</button>
+      <button id="analyze-btn">Analyze PR</button>
+    </div>
+  </div>
+</div>
 
-  <!-- ── Scripts ───────────────────────────────────────────────────── -->
-  <script src="diff_viewer.js"></script>
-  <script src="graph.js"></script>
-  <script src="app.js"></script>
+<script src="diff_viewer.js"></script>
+<script src="graph.js"></script>
+<script src="app.js"></script>
 
 </body>
-
 </html>
