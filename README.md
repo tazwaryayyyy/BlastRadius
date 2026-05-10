@@ -1,284 +1,126 @@
 # BlastRadius ⚡
 
-> Pre-merge impact intelligence powered by IBM Bob.
-> Know exactly what your PR will break — before it merges.
+> The average PR sits in review for 2.5 days.  
+> Half that time is engineers asking "what does this break?"  
+> **BlastRadius answers in 30 seconds.**
 
-**Live Demo:** [https://blastradius-rosy.vercel.app/](https://blastradius-rosy.vercel.app/)
-**API Base:** [https://blastradius-api.onrender.com](https://blastradius-api.onrender.com)
+Paste a GitHub PR URL. Get the full call-chain impact report — powered by two autonomous AI agents — before you merge.
 
----
-
-## What it does
-
-BlastRadius gives every PR a **blast radius report**: a force-directed graph
-showing every file your change can affect, ranked by risk level, with test
-coverage gaps called out explicitly.
-
-The core insight: existing tools (Copilot, Cursor, CodeRabbit) review *what
-you wrote*. BlastRadius answers the question they can't: **what does merging
-this affect downstream?**
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-bot_ready-2088FF?logo=github-actions&logoColor=white)](https://github.com/msanmaz/blastradius/blob/main/.github/workflows/blastradius.yml)
+[![Live Demo](https://img.shields.io/badge/Live_Demo-blastradius--rosy.vercel.app-black?logo=vercel)](https://blastradius-rosy.vercel.app/)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
 ---
 
-## Why IBM Bob?
+## Live Examples
 
-Traditional analyzers can be precise, but they take time to configure and usually end in reports nobody reads. BlastRadius turns the same question into a 30-second PR workflow engineers will actually use.
+Three pre-generated reports on real open-source PRs — no API call, no cold start, just the graph.
 
-Bob holds the **entire repository in context simultaneously** so the output is fast, readable, and tied to the pull request instead of a separate analysis queue.
+| Project | PR | Blast Radius |
+|---|---|---|
+| Express.js | [#5570](https://github.com/expressjs/express/pull/5570) | [View Report](https://blastradius-rosy.vercel.app/?report=PLACEHOLDER_UUID_1) |
+| Axios | [#4124](https://github.com/axios/axios/pull/4124) | [View Report](https://blastradius-rosy.vercel.app/?report=PLACEHOLDER_UUID_2) |
+| FastAPI | [#9563](https://github.com/fastapi/fastapi/pull/9563) | [View Report](https://blastradius-rosy.vercel.app/?report=PLACEHOLDER_UUID_3) |
 
-Specifically, Bob:
-- Traces multi-hop call chains across the full codebase (not just direct imports)
-- Flags lower-confidence paths explicitly when runtime wiring or dynamic dispatch requires manual verification
-- Correlates changed symbols against the complete test suite to find coverage gaps
-- Produces causal explanations — *why* a path is risky, not just *that* it exists
-
-The value claim is speed, usability, and workflow integration: full-repo impact analysis in plain English, inside the PR, before merge.
+> ⚠ Report UUIDs above are placeholders. Run the tool on each PR and replace them with the `?report=` links it generates.
 
 ---
 
-## Stack
+## What It Does
 
-| Layer     | Tech                              |
-|-----------|-----------------------------------|
-| Backend   | FastAPI + Python 3.12             |
-| AI        | IBM Bob API (+ OpenAI fallback)   |
-| Frontend  | Vanilla JS + D3.js v7             |
-| Deploy    | Docker Compose / Railway / Render |
+A developer pastes a GitHub PR URL into the input field. BlastRadius fetches the diff and a prioritized slice of the repository context, then runs two agents in sequence: TraceAgent (Gemini Pro) walks every call chain touched by the changed symbols — across multiple hops, through dynamic dispatch boundaries, and into test files — and returns a risk-coded chain graph with a BLOCK or ALLOW verdict. RemediationAgent (Gemini Flash) then takes every CRITICAL chain that has no test coverage and writes a runnable test stub for it, so the reviewer has something concrete to copy rather than a vague warning. Both agents stream real-time stage events to the frontend over SSE, the D3 graph renders as results arrive, and a shareable UUID link is generated so the report can be dropped directly into a PR comment.
 
 ---
 
-## Project structure
+## How It Compares
+
+| | GitHub PR Review | CodeRabbit | **BlastRadius** |
+|---|---|---|---|
+| Reviews what you wrote | ✓ | ✓ | ✓ |
+| Traces downstream call chains | ✗ | ✗ | ✓ |
+| Identifies untested impact paths | ✗ | partial | ✓ |
+| Auto-generates missing test stubs | ✗ | ✗ | ✓ |
+| Works on any public GitHub PR | ✗ | ✓ | ✓ |
+| Posts to PR as a bot comment | ✗ | ✓ | ✓ |
+
+The distinction: every tool in this table tells you if your code is *good*. BlastRadius tells you if merging it is *safe*.
+
+---
+
+## Architecture
+
+TraceAgent uses Gemini Pro's extended reasoning window to walk multi-hop call chains across the full repository context, returning a structured risk report with per-chain confidence ratings and test coverage flags. RemediationAgent then takes only the CRITICAL, untested chains from that report and calls Gemini Flash to produce a runnable pytest stub and a one-line fix summary for each — fast enough to complete before a reviewer finishes reading the diff. Both agents emit named stage events over a shared asyncio queue, which the SSE endpoint forwards to the frontend in real time. Completed reports are stored with a UUID and served from `/api/report/{id}` so the link is shareable indefinitely.
 
 ```
-blastradius/
-├── backend/
-│   ├── main.py           # FastAPI app — 3 endpoints
-│   ├── bob_client.py     # IBM Bob API wrapper + fallback
-│   ├── repo_loader.py    # Repo indexer + context prioritizer
-│   ├── diff_parser.py    # Unified diff → changed files + symbols
-│   ├── prompt_builder.py # Constructs the Bob prompt (most critical file)
-│   ├── models.py         # Pydantic schemas
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── index.html        # Three-panel SPA shell
-│   ├── app.js            # Main orchestrator
-│   ├── graph.js          # D3 force-directed blast radius graph
-│   ├── diff_viewer.js    # Syntax-highlighted diff display
-│   └── styles.css        # Dark terminal aesthetic
-├── demo_repo/            # Pre-seeded 15-file Node.js monorepo
-│   ├── shared/
-│   │   ├── rate_limiter.js   ← THE file changed in the demo PR
-│   │   └── http_client.js    (safe — not in blast radius)
-│   ├── api/routes/
-│   │   ├── payments.js       CRITICAL chain (no tests)
-│   │   ├── auth.js           MEDIUM chain (has tests)
-│   │   └── webhooks.js       LOW chain (graceful fallback)
-│   ├── services/
-│   │   ├── billing/process.js      CRITICAL node 2
-│   │   ├── billing/stripe_client.js CRITICAL leaf
-│   │   └── notifications/email.js   LOW node (queues on failure)
-│   └── __tests__/
-│       ├── auth.test.js      covers auth chain
-│       └── webhooks.test.js  covers webhook chain
-├── demo_prs/
-│   ├── pr_ratelimiter.diff   Main demo — tighten rate limit window
-│   └── pr_auth.diff          Backup demo — token expiry change
-├── docker-compose.yml
-├── nginx.conf
-└── .env.example
+PR URL → GitHub Loader → [TraceAgent] → [RemediationAgent] → Report + Share Link
+                               ↓                   ↓
+                        Blast Radius Graph    Test Stubs + Fix Summary
 ```
 
 ---
 
-## Quick start
+## GitHub Actions Integration
 
-### 1. Clone and configure
+Add one secret to your repo, copy the workflow file — the bot posts a risk table and test stubs as a PR comment on every push.
+
+**Setup:**
+
+```
+Settings → Secrets → Actions → New secret
+Name:  BLASTRADIUS_API_URL
+Value: https://blastradius-api-dz0l.onrender.com
+```
+
+Then copy [`.github/workflows/blastradius.yml`](.github/workflows/blastradius.yml) into your own repo. No other configuration needed.
+
+<!-- Add screenshot of bot PR comment here -->
+
+The bot comment includes: a risk-level table for every impacted call chain, auto-generated test stubs for any uncovered CRITICAL paths, and a link to the full interactive graph.
+
+---
+
+## Running Locally
 
 ```bash
-git clone https://github.com/youruser/blastradius.git
-cd blastradius
-cp .env.example .env
-# Edit .env — add your IBM Bob API key (or fallback LLM key)
-```
-
-### 2. Run with Docker Compose
-
-```bash
-docker-compose up --build
-```
-
-- Frontend: http://localhost:3000
-- Backend API: http://localhost:8000
-- API docs: http://localhost:8000/docs
-
-### 3. Run locally (no Docker)
-
-**Backend:**
-```bash
-cd backend
-python -m venv .venv && source .venv/bin/activate  # or .venv\Scripts\activate on Windows
+git clone https://github.com/msanmaz/blastradius.git
+cd blastradius/backend
+cp .env.example .env        # fill in GEMINI_API_KEY
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8000
+uvicorn main:app --reload
 ```
 
-**Frontend:**
 ```bash
-# Any static server works — no build step needed
-cd frontend
-npx serve .          # or python -m http.server 3000
+# Frontend — open in browser directly or serve it:
+cd frontend && npx serve .
 ```
 
----
-
-## API endpoints
-
-| Method | Path            | Description                                      |
-|--------|-----------------|--------------------------------------------------|
-| POST   | `/api/analyze`  | Full analysis — returns `BlastRadiusReport` JSON |
-| GET    | `/api/demo`     | One-click demo — pre-seeded rate limiter PR      |
-| GET    | `/api/demo/diff`| Returns raw demo diff text for the diff viewer   |
-| GET    | `/api/stream`   | SSE streaming version of analyze                 |
-| GET    | `/api/health`   | Liveness probe                                   |
-
-### POST `/api/analyze` — request body
-
-```json
-{
-  "diff": "--- a/shared/rate_limiter.js\n+++ b/...",
-  "repo_path": "demo_repo",
-  "pr_title": "fix: tighten rate limit window",
-  "stream": false
-}
-```
-
-### Response — `BlastRadiusReport`
-
-```json
-{
-  "changed_symbols": ["applyRateLimit"],
-  "call_chains": [
-    {
-      "id": "chain_1",
-      "risk": "CRITICAL",
-      "path": ["shared/rate_limiter.js", "api/routes/payments.js", "services/billing/process.js", "services/billing/stripe_client.js"],
-      "symbols": ["applyRateLimit", "handleCharge", "processPayment", "chargeCard"],
-      "confidence": "HIGH",
-      "confidence_reason": "Direct static import chain.",
-      "has_tests": false,
-      "test_files": [],
-      "business_impact": "Payment retries will be blocked — halved rate window rejects Stripe retries. No test covers this path.",
-      "explanation": "applyRateLimit() is called at payments.js:27 inside handleCharge(), which calls billing.processPayment(), which calls stripe.chargeCard(). No file in __tests__/ imports processPayment."
-    },
-    {
-      "id": "chain_2",
-      "risk": "MEDIUM",
-      "path": ["shared/rate_limiter.js", "api/routes/auth.js"],
-      "symbols": ["applyRateLimit", "loginUser"],
-      "confidence": "HIGH",
-      "confidence_reason": "Direct static import chain.",
-      "has_tests": true,
-      "test_files": ["__tests__/auth.test.js"],
-      "business_impact": "Login rate limiting tightened. Auth tests cover this path — lower risk.",
-      "explanation": "applyRateLimit() called at auth.js:20 inside loginUser(). __tests__/auth.test.js imports and tests loginUser with a mocked rate limiter."
-    },
-    {
-      "id": "chain_3",
-      "risk": "LOW",
-      "path": ["shared/rate_limiter.js", "api/routes/webhooks.js", "services/notifications/email.js"],
-      "symbols": ["applyRateLimit", "handleNotification", "sendEmail"],
-      "confidence": "MEDIUM",
-      "confidence_reason": "Inferred via fallback handling path — verify manually.",
-      "has_tests": true,
-      "test_files": ["__tests__/webhooks.test.js"],
-      "business_impact": "Notification rate limiting tightened. Graceful queue fallback prevents data loss.",
-      "explanation": "webhooks.js catches 429 errors and calls emailService.queueEmail() — no notifications are lost. Covered by webhooks.test.js."
-    }
-  ],
-  "safe_paths": ["api/routes/payments.js:getPaymentStatus uses http_client directly — not affected"],
-  "risk_summary": { "CRITICAL": 1, "HIGH": 0, "MEDIUM": 1, "LOW": 1 },
-  "merge_recommendation": "BLOCK MERGE — CRITICAL untested billing path exposed. Add tests for processPayment() and handleCharge() before merging.",
-  "suggested_actions": [
-    "Add test for processPayment() covering rate limit window < 30s",
-    "Add retry backoff in billing/process.js before calling chargeCard()",
-    "Verify Stripe webhook retry interval against new windowMs value"
-  ],
-  "pr_title": "fix: tighten rate limit window for security compliance"
-}
-```
+API docs available at `http://localhost:8000/docs`.
 
 ---
 
-## The demo script (2 minutes)
+## Environment Variables
 
-1. **Open the app** — three panels visible, graph is idle.
-2. **Press "Run Demo"** — diff loads in the left panel. Bob starts streaming.
-3. **Graph renders** — three chains radiate from the blue changed node.
-4. **Point out the chains**:
-   - Green node (LOW) — webhooks, safe, has tests
-   - Yellow node (MEDIUM) — auth, partial risk, has tests
-   - **Red pulsing node (CRITICAL) — billing, no tests**
-5. **Click the red node** — right panel shows the full chain, confidence label, and no-test warning.
-6. **Read the header** — the risk score spikes and the verdict blocks merge.
-7. **Use the checklist** — suggested actions tell the reviewer what to do before merge.
-8. **Punchline**: "We're not chasing rare disasters. We're catching the hidden breakages that cause 2am pages every week."
+| Variable | Required | Description |
+|---|---|---|
+| `GEMINI_API_KEY` | Yes | Gemini API key from [aistudio.google.com](https://aistudio.google.com) |
+| `GITHUB_TOKEN` | No | Raises GitHub API rate limit from 60 to 5,000 req/hr |
+| `CORS_ORIGINS` | Production | Comma-separated list of allowed frontend origins |
+| `BLASTRADIUS_API_URL` | GitHub Actions | Your deployed backend URL, set as a repo secret |
 
 ---
 
-## Configuration
+## Tech Stack
 
-| Variable              | Required | Description                              |
-|-----------------------|----------|------------------------------------------|
-| `BOB_API_URL`         | Yes*     | IBM Bob endpoint base URL                |
-| `BOB_API_KEY`         | Yes*     | IBM Bob API key                          |
-| `BOB_MODEL`           | No       | Model name (default: `bob-v1`)           |
-| `BOB_FALLBACK_URL`    | Yes*     | Fallback LLM base URL (OpenAI-compatible)|
-| `BOB_FALLBACK_API_KEY`| Yes*     | Fallback API key                         |
-| `BOB_FALLBACK_MODEL`  | No       | Fallback model (default: `gpt-4o`)       |
-
-*At least one of (Bob or fallback) must be configured.
+| Layer | Technology |
+|---|---|
+| Backend | Python 3.12, FastAPI, httpx |
+| AI Agents | Gemini 2.0 Pro (TraceAgent), Gemini 2.0 Flash (RemediationAgent) |
+| Frontend | Vanilla JS, D3.js v7 |
+| GitHub Integration | REST API, Trees API, GitHub Actions |
+| Deployment | Render (backend), Vercel (frontend) |
 
 ---
 
-## BlastRadius vs existing tools
+## License
 
-| Capability | BlastRadius | CodeRabbit | GitHub Copilot | Cursor |
-|---|---|---|---|---|
-| Reviews code you wrote | ✓ | ✓ | ✓ | ✓ |
-| Traces downstream impact | ✓ | ✗ | ✗ | ✗ |
-| Multi-hop call graph tracing | ✓ | ✗ | ✗ | ✗ |
-| Test coverage gap detection | ✓ | Partial | ✗ | ✗ |
-| Merge verdict with reasoning | ✓ | ✗ | ✗ | ✗ |
-| Full repo context simultaneously | ✓ (via Bob) | ✗ | ✗ | Partial |
-| Works on any diff / any language | ✓ | ✓ | ✓ | ✓ |
-| Visual blast radius graph | ✓ | ✗ | ✗ | ✗ |
-
-The key distinction: every tool in this table tells you if your code is *good*. BlastRadius tells you if merging it is *safe*, fast enough to use on every PR, and clear enough that people will act on it.
-
----
-
-## Troubleshooting
-
-**Bob API returns 401**
-Check `BOB_API_KEY` in `.env`. Make sure there are no trailing spaces or quotes around the key.
-
-**Graph renders but shows no nodes**
-Bob returned an empty `call_chains` array. This means the diff symbols weren't found in the repo files. Verify `repo_path` points to the correct directory and the diff file paths match the repo structure.
-
-**SSE stream hangs / never completes**
-Nginx is likely buffering the stream. Confirm `nginx.conf` has `proxy_buffering off` and `proxy_read_timeout 180s`. If running locally without nginx, the stream connects directly to FastAPI and this isn't an issue.
-
-**`uvicorn: command not found` after install**
-The venv wasn't activated. Run `source backend/.venv/bin/activate` (Linux/Mac) or `backend\.venv\Scripts\activate` (Windows) before running uvicorn.
-
-**Docker Compose: `port 8000 already in use`**
-Another process is on port 8000. Either stop it (`lsof -ti:8000 | xargs kill`) or change the port in `docker-compose.yml` and `frontend/app.js` (`window.API_BASE`).
-
-**Bob fallback not triggering**
-The fallback only activates if `BOB_API_URL` is set but unreachable, or returns a non-2xx error. If `BOB_API_URL` is empty, the fallback is used directly. Check logs for `"Bob primary failed"` to confirm fallback activation.
-
-**Demo diff loads but analysis never finishes**
-Bob's response is taking longer than `REQUEST_TIMEOUT` (120s). Increase it in `bob_client.py` or check Bob API status.
-
----
-
+MIT
