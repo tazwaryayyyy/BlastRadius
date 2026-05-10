@@ -59,6 +59,20 @@
               rate limiter PR — or paste your own diff above.
             </div>
           </div>
+          <div id="github-url-panel" style="display:none; padding: 1rem;">
+            <input
+              type="url"
+              id="pr-url-input"
+              placeholder="https://github.com/owner/repo/pull/123"
+              aria-label="GitHub PR URL"
+              style="width:100%; padding:0.75rem; background:var(--bg-secondary);
+                     border:1px solid var(--border); color:var(--text-primary);
+                     border-radius:6px; font-size:0.9rem;"
+            />
+            <button id="analyze-github-btn" style="margin-top:0.75rem;">
+              Analyze PR
+            </button>
+          </div>
         </div>
       </div>
 
@@ -137,7 +151,7 @@
           onclick="document.getElementById('custom-modal').style.display='none'">✕</button>
       </div>
       <div id="url-input-section">
-        <input type="url" id="pr-url-input" placeholder="https://github.com/owner/repo/pull/123"
+        <input type="url" id="modal-pr-url-input" placeholder="https://github.com/owner/repo/pull/123"
           aria-label="GitHub PR URL" />
       </div>
       <div id="diff-input-section" style="display:none">

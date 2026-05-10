@@ -63,6 +63,25 @@ document.addEventListener('DOMContentLoaded', () => {
   demoBtn.addEventListener('click', runDemo);
   analyzeBtn?.addEventListener('click', runCustomAnalysis);
 
+  // Inline GitHub URL panel — Analyze PR button
+  document.getElementById('analyze-github-btn')?.addEventListener('click', async () => {
+    const prUrl = document.getElementById('pr-url-input')?.value?.trim();
+    if (!prUrl) {
+      showWarning(document.getElementById('pr-url-input'), 'Enter a GitHub PR URL first.');
+      return;
+    }
+    setLoading(true);
+    clearUI();
+    if (prTitleEl) prTitleEl.textContent = prUrl;
+    analysisStartTime = Date.now();
+    try {
+      await streamGithubAnalysis(prUrl);
+    } catch (err) {
+      showError(err.message);
+      setLoading(false);
+    }
+  });
+
   // Restore saved input mode
   const savedMode = sessionStorage.getItem('inputMode') || 'url';
   _applyInputMode(savedMode);
@@ -696,27 +715,27 @@ async function streamGithubAnalysis(prUrl) {
 
 // ── Input mode toggle ──────────────────────────────────────────────
 function toggleInputMode(mode) {
-  _applyInputMode(mode);
+  const diffContainer = document.getElementById('diff-container');
+  const urlPanel = document.getElementById('github-url-panel');
+  const githubTab = document.getElementById('mode-url-btn');
+  const diffTab = document.getElementById('mode-diff-btn');
+
+  if (mode === 'url') {
+    if (urlPanel) urlPanel.style.display = 'block';
+    if (diffContainer) diffContainer.style.display = 'none';
+    githubTab?.classList.add('active');
+    diffTab?.classList.remove('active');
+  } else {
+    if (urlPanel) urlPanel.style.display = 'none';
+    if (diffContainer) diffContainer.style.display = 'block';
+    diffTab?.classList.add('active');
+    githubTab?.classList.remove('active');
+  }
   sessionStorage.setItem('inputMode', mode);
 }
 
 function _applyInputMode(mode) {
-  const urlSection = document.getElementById('url-input-section');
-  const diffSection = document.getElementById('diff-input-section');
-  const urlBtn = document.getElementById('mode-url-btn');
-  const diffBtn = document.getElementById('mode-diff-btn');
-
-  if (mode === 'url') {
-    if (urlSection) urlSection.style.display = 'block';
-    if (diffSection) diffSection.style.display = 'none';
-    if (urlBtn) urlBtn.classList.add('active');
-    if (diffBtn) diffBtn.classList.remove('active');
-  } else {
-    if (urlSection) urlSection.style.display = 'none';
-    if (diffSection) diffSection.style.display = 'block';
-    if (urlBtn) urlBtn.classList.remove('active');
-    if (diffBtn) diffBtn.classList.add('active');
-  }
+  toggleInputMode(mode);
 }
 
 
@@ -726,9 +745,9 @@ async function runCustomAnalysis() {
   const mode = sessionStorage.getItem('inputMode') || 'url';
 
   if (mode === 'url') {
-    const prUrl = document.getElementById('pr-url-input')?.value?.trim();
+    const prUrl = document.getElementById('modal-pr-url-input')?.value?.trim();
     if (!prUrl) {
-      showWarning(document.getElementById('pr-url-input'), 'Enter a GitHub PR URL first.');
+      showWarning(document.getElementById('modal-pr-url-input'), 'Enter a GitHub PR URL first.');
       return;
     }
     document.getElementById('custom-modal').style.display = 'none';
