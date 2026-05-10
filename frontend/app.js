@@ -319,6 +319,7 @@ function renderReport(report) {
   // Merge recommendation
   renderMergeVerdict(report.merge_recommendation);
   renderSuggestedActions(report.suggested_actions || []);
+  renderCostEstimate(report);
 
   // Chain list — handle empty state
   if (report.call_chains.length === 0) {
@@ -403,7 +404,7 @@ function buildChainCard(chain) {
 
   return `
     <div class="chain-card risk-${chain.risk}" data-chain-id="${chain.id}">
-      <div class="chain-risk-badge">${chain.risk}</div>
+      <div class="chain-risk-badge">${chain.risk}<span class="badge-${(chain.verification_status || 'UNVERIFIABLE').toLowerCase()}">${chain.verification_status || 'UNVERIFIABLE'}</span></div>
       <div class="chain-path">${pathHtml}</div>
       <div class="chain-impact">${escapeHtml(chain.business_impact)}</div>
       ${confidence}
@@ -485,6 +486,35 @@ function renderSuggestedActions(actions) {
       </label>
     `).join('')}
   `;
+}
+
+
+function renderCostEstimate(report) {
+  const panel = document.getElementById('cost-panel');
+  if (!panel) return;
+
+  const est = report.cost_estimate;
+  const isBlock = (report.merge_recommendation || '').toUpperCase().includes('BLOCK');
+  if (!isBlock || !est) {
+    panel.style.display = 'none';
+    return;
+  }
+
+  const fmt = (n) => n >= 1000
+    ? '$' + (n / 1000).toFixed(1) + 'k'
+    : '$' + Math.round(n);
+
+  const incidentEl = document.getElementById('cost-incident');
+  const hoursEl = document.getElementById('cost-hours');
+  const stubsEl = document.getElementById('cost-stubs');
+  const basisEl = document.getElementById('cost-basis');
+
+  if (incidentEl) incidentEl.textContent = fmt(est.incident_cost_usd);
+  if (hoursEl) hoursEl.textContent = est.hours_saved + 'h';
+  if (stubsEl) stubsEl.textContent = String(est.stubs_generated);
+  if (basisEl) basisEl.textContent = est.calculation_basis;
+
+  panel.style.display = 'block';
 }
 
 
@@ -591,6 +621,8 @@ function resetUI() {
   if (shareBar) shareBar.style.display = 'none';
   const statsBar = document.getElementById('context-stats-bar');
   if (statsBar) statsBar.style.display = 'none';
+  const costPanel = document.getElementById('cost-panel');
+  if (costPanel) costPanel.style.display = 'none';
 
   // Clear everything else
   clearUI();

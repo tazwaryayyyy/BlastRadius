@@ -1,7 +1,9 @@
 import json
 import logging
+import os
 from typing import Callable
 
+from ast_verifier import verify_call
 from gemini_client import GEMINI_PRO, _clean_json, call_gemini, call_gemini_multimodal
 from models import DiffResult
 from prompt_builder import build_system_prompt, build_user_prompt
@@ -43,4 +45,22 @@ class TraceAgent:
             raw = await call_gemini(full_prompt, model=GEMINI_PRO)
 
         _cb("checking_coverage")
-        return json.loads(_clean_json(raw))
+        report_dict = json.loads(_clean_json(raw))
+
+        # ── AST verification: badge each call chain edge ──────────────
+        for chain in report_dict.get("call_chains", []):
+            path: list[str] = chain.get("path", [])
+            if len(path) < 2:
+                chain["verification_status"] = "UNVERIFIABLE"
+                continue
+            caller_file = path[0]
+            callee_path = path[1]
+            caller_content = self.repo_context.get(caller_file, "")
+            if not caller_content:
+                chain["verification_status"] = "UNVERIFIABLE"
+                continue
+            callee_name = os.path.splitext(os.path.basename(callee_path))[0]
+            ext = os.path.splitext(caller_file)[1]
+            chain["verification_status"] = verify_call(caller_content, callee_name, ext)
+
+        return report_dict

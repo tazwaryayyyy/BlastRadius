@@ -1260,3 +1260,98 @@ button:focus-visible {
   background: linear-gradient(135deg, #4285f4, #0f9d58) !important;
   border: none !important;
 }
+
+/* ── Risk Cost Estimator panel ──────────────────────────────────────── */
+#cost-panel {
+  margin: 8px 16px 0;
+  padding: 14px 16px 10px;
+  border: 1px solid var(--critical-border);
+  border-radius: 8px;
+  background: var(--critical-bg);
+}
+
+.cost-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.cost-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 10px 12px;
+  text-align: center;
+}
+
+.cost-label {
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 4px;
+}
+
+.cost-value {
+  font-size: 22px;
+  font-family: var(--mono);
+  font-weight: 700;
+  color: var(--critical);
+}
+
+.cost-basis {
+  font-size: 10px;
+  color: var(--text-3);
+  line-height: 1.5;
+  font-style: italic;
+}
+
+/* ── AST verification badges (chain card) ───────────────────────────── */
+.badge-verified,
+.badge-inferred,
+.badge-unverifiable {
+  display: inline-block;
+  font-size: 9px;
+  font-family: var(--mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 4px;
+  vertical-align: middle;
+  margin-left: 6px;
+}
+
+.badge-verified {
+  background: rgba(61, 214, 140, 0.12);
+  color: var(--low);
+  border: 1px solid rgba(61, 214, 140, 0.28);
+}
+
+.badge-inferred {
+  background: var(--high-bg);
+  color: var(--high);
+  border: 1px solid rgba(255, 140, 0, 0.28);
+}
+
+.badge-unverifiable {
+  background: var(--bg-surface);
+  color: var(--text-3);
+  border: 1px solid var(--border);
+}
+
+/* ── Graph edge verification classes ────────────────────────────────── */
+line.verification-verified {
+  stroke-dasharray: none;
+  opacity: 0.85;
+}
+
+line.verification-inferred {
+  stroke-dasharray: 5 3;
+  opacity: 0.65;
+}
+
+line.verification-unverifiable {
+  stroke-dasharray: 2 4;
+  opacity: 0.45;
+}

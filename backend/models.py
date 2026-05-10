@@ -26,6 +26,7 @@ class CallChain(BaseModel):
     test_files: list[str] = Field(default_factory=list)
     business_impact: str
     explanation: str
+    verification_status: str = "UNVERIFIABLE"
 
 
 class RiskSummary(BaseModel):
@@ -40,6 +41,13 @@ class RemediationResult(BaseModel):
     test_file_path: str
     test_stub: str
     fix_summary: str
+
+
+class CostEstimate(BaseModel):
+    incident_cost_usd: float
+    hours_saved: float
+    stubs_generated: int
+    calculation_basis: str  # one sentence explaining the numbers
 
 
 class ContextStats(BaseModel):
@@ -59,6 +67,7 @@ class BlastRadiusReport(BaseModel):
     pr_title: Optional[str] = None
     remediations: list[RemediationResult] = Field(default_factory=list)
     context_stats: Optional[ContextStats] = None
+    cost_estimate: Optional[CostEstimate] = None
 
 
 class DiffResult(BaseModel):

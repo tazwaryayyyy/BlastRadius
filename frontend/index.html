@@ -84,7 +84,8 @@
             <div class="idle-text">
               Blast radius graph will render here.<br />
               Nodes = files &nbsp;·&nbsp; Color = risk level<br />
-              Dashed border = no test coverage
+              Dashed border = no test coverage<br />
+              Solid edge = verified &nbsp;·&nbsp; Dashed edge = inferred
             </div>
             <button id="idle-demo-btn" class="btn-sm" aria-label="Run demo analysis"
               onclick="document.getElementById('demo-btn').click()">
@@ -112,6 +113,25 @@
         <div id="recommendation-bar">
           <div id="merge-verdict"></div>
           <div id="suggested-actions"></div>
+        </div>
+
+        <!-- Risk cost estimator (shown only on BLOCK verdict) -->
+        <div id="cost-panel" style="display:none">
+          <div class="cost-grid">
+            <div class="cost-card">
+              <div class="cost-label">Estimated Incident Cost</div>
+              <div class="cost-value" id="cost-incident">$0</div>
+            </div>
+            <div class="cost-card">
+              <div class="cost-label">Engineer Hours Saved</div>
+              <div class="cost-value" id="cost-hours">0h</div>
+            </div>
+            <div class="cost-card">
+              <div class="cost-label">Test Stubs Generated</div>
+              <div class="cost-value" id="cost-stubs">0</div>
+            </div>
+          </div>
+          <div class="cost-basis" id="cost-basis"></div>
         </div>
       </div>
 

@@ -3,9 +3,16 @@ import logging
 from typing import Callable
 
 from gemini_client import GEMINI_FLASH, _clean_json, call_gemini
-from models import RemediationResult
+from models import CostEstimate, RemediationResult
 
 logger = logging.getLogger(__name__)
+
+# DORA 2023: median time to restore service after incident = 1.5 hours
+# PagerDuty 2023: average cost per incident hour = $600 (eng + on-call + ops)
+# Assumes 1 CRITICAL uncovered chain = 1 potential incident
+INCIDENT_RESTORE_HOURS = 1.5
+COST_PER_HOUR = 600
+HOURS_SAVED_PER_STUB = 1.6  # time to manually write + debug a test
 
 
 class RemediationAgent:
@@ -37,6 +44,27 @@ class RemediationAgent:
                     "RemediationAgent skipping chain %s: %s", chain.get("id"), exc)
 
         report_dict["remediations"] = remediations
+
+        # ── Cost estimate (only when verdict is BLOCK) ─────────────────
+        if report_dict.get("merge_recommendation", "").upper().find("BLOCK") != -1:
+            critical_uncovered_count = len([
+                c for c in report_dict.get("call_chains", [])
+                if c.get("risk") == "CRITICAL" and not c.get("has_tests", True)
+            ])
+            stubs_count = len(remediations)
+            incident_cost = critical_uncovered_count * INCIDENT_RESTORE_HOURS * COST_PER_HOUR
+            hours_saved = stubs_count * HOURS_SAVED_PER_STUB
+            cost_estimate = CostEstimate(
+                incident_cost_usd=round(incident_cost, 2),
+                hours_saved=round(hours_saved, 1),
+                stubs_generated=stubs_count,
+                calculation_basis=(
+                    f"Based on {critical_uncovered_count} critical uncovered path(s). "
+                    f"DORA 2023: median restore time {INCIDENT_RESTORE_HOURS}h "
+                    f"at ${COST_PER_HOUR}/hr engineering cost."
+                ),
+            )
+            report_dict["cost_estimate"] = cost_estimate.model_dump()
 
         if stage_callback:
             stage_callback("generating_verdict")

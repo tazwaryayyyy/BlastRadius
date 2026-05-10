@@ -139,6 +139,7 @@ function buildGraphData(report) {
         target: chain.path[i + 1],
         risk: chain.risk,
         chainId: chain.id,
+        verification_status: chain.verification_status || 'UNVERIFIABLE',
       });
     }
   });
@@ -184,7 +185,7 @@ function renderGraph(report) {
     .selectAll('line')
     .data(links)
     .join('line')
-    .attr('class', 'link')
+    .attr('class', (d) => `link verification-${(d.verification_status || 'UNVERIFIABLE').toLowerCase()}`)
     .attr('stroke', (d) => getRiskColor(d.risk) || getRiskColor('safe'))
     .attr('stroke-width', 1.5)
     .attr('marker-end', (d) => `url(#arrow-${d.risk})`);
