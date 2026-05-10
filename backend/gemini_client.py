@@ -10,8 +10,8 @@ logger = logging.getLogger(__name__)
 GEMINI_API_BASE = "https://generativelanguage.googleapis.com/v1beta"
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY", "")
 
-GEMINI_PRO = "gemini-2.0-flash-thinking-exp"
-GEMINI_FLASH = "gemini-2.0-flash"
+GEMINI_PRO = "gemini-2.5-flash"
+GEMINI_FLASH = "gemini-2.5-flash"
 
 _TIMEOUT = 120.0
 _MAX_RETRIES = 3
