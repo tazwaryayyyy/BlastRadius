@@ -47,6 +47,8 @@ let analysisStartTime = null;
 let streamSteps = [];
 
 const STAGE_LABELS = {
+  loading_repo: 'Loading repository context...',
+  parsing_diff: 'Parsing diff and extracting symbols...',
   tracing_callers: 'Tracing callers of changed symbols...',
   building_chains: 'Building upstream call chains...',
   checking_coverage: 'Checking test coverage...',
