@@ -13,7 +13,7 @@
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://localhost:8000'
-  : 'https://blastradius-api.onrender.com';
+  : 'https://blastradius-api-dz0l.onrender.com';
 
 // ── State ──────────────────────────────────────────────────────────
 let currentReport = null;
