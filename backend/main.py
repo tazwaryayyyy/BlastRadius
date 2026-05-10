@@ -33,7 +33,7 @@ from diff_parser import parse_diff
 from models import AnalyzeRequest, BlastRadiusReport, GithubAnalyzeRequest, RiskSummary
 from prompt_builder import build_system_prompt, build_user_prompt
 from remediation_agent import RemediationAgent
-from report_store import get_report, store_report
+from report_store import get_report, save_static_report, store_report
 from repo_loader import load_repo
 from trace_agent import TraceAgent
 
@@ -365,3 +365,17 @@ async def get_report_endpoint(report_id: str):
     if not report:
         raise HTTPException(404, "Report not found or expired.")
     return report
+
+
+STATIC_SAVE_SECRET = os.getenv("STATIC_SAVE_SECRET", "")
+
+
+@app.post("/api/report/{report_id}/pin")
+async def pin_report(report_id: str, secret: str = Query(...)):
+    if not STATIC_SAVE_SECRET or secret != STATIC_SAVE_SECRET:
+        raise HTTPException(status_code=403, detail="Forbidden.")
+    report = await get_report(report_id)
+    if not report:
+        raise HTTPException(status_code=404, detail="Report not found.")
+    await save_static_report(report_id, report)
+    return {"pinned": report_id}
