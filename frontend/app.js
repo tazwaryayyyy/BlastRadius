@@ -71,7 +71,6 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
     setLoading(true);
-    clearUI();
     if (prTitleEl) prTitleEl.textContent = prUrl;
     analysisStartTime = Date.now();
     try {
@@ -101,7 +100,7 @@ document.addEventListener('DOMContentLoaded', () => {
 // ── Demo flow ──────────────────────────────────────────────────────
 async function runDemo() {
   setLoading(true);
-  clearUI();
+  resetUI();
 
   try {
     // Load the diff text for the diff viewer
@@ -142,7 +141,7 @@ async function runCustomAnalysis() {
   document.getElementById('custom-modal').style.display = 'none';
 
   setLoading(true);
-  clearUI();
+  resetUI();
   currentDiff = diff;
   DiffViewer.renderDiff('diff-container', diff, []);
 
@@ -549,6 +548,7 @@ function clearUI() {
   graphIdle.style.display = 'flex';
   detailPanel.innerHTML = '';
   detailEmpty.style.display = 'block';
+  detailEmpty.innerHTML = 'Click a node in the graph<br />to see its blast radius chain.';
   if (noChainsState) noChainsState.style.display = 'none';
   riskBadge.className = '';
   riskBadge.style.display = 'none';
@@ -566,6 +566,34 @@ function clearUI() {
   analysisStartTime = null;
   streamSteps = [];
   DiffViewer.clearDiff('diff-container');
+}
+
+function resetUI() {
+  // Cancel any active SSE stream
+  if (activeStream) {
+    activeStream.close();
+    activeStream = null;
+  }
+
+  // Reset state
+  currentReport = null;
+  currentReportId = null;
+
+  // Clear D3 graph
+  if (typeof window.BlastGraph?.destroy === 'function') {
+    window.BlastGraph.destroy();
+  }
+  const svgEl = document.querySelector('#graph-canvas svg');
+  if (svgEl) svgEl.innerHTML = '';
+
+  // Hide share bar and context stats bar
+  const shareBar = document.getElementById('share-bar');
+  if (shareBar) shareBar.style.display = 'none';
+  const statsBar = document.getElementById('context-stats-bar');
+  if (statsBar) statsBar.style.display = 'none';
+
+  // Clear everything else
+  clearUI();
 }
 
 
@@ -636,14 +664,21 @@ function showWarning(anchorEl, msg) {
 
 // ── GitHub URL analysis ────────────────────────────────────────────
 async function streamGithubAnalysis(prUrl) {
+  resetUI();
+
+  const _urlInput = document.getElementById('pr-url-input');
+  const _analyzeBtn = document.getElementById('analyze-github-btn');
+  if (_urlInput) _urlInput.readOnly = true;
+  if (_analyzeBtn) { _analyzeBtn.disabled = true; _analyzeBtn.textContent = 'Analyzing...'; }
+
+  const _restoreInput = () => {
+    if (_urlInput) _urlInput.readOnly = false;
+    if (_analyzeBtn) { _analyzeBtn.disabled = false; _analyzeBtn.textContent = 'Analyze PR'; }
+  };
+
   showStreamLog();
 
   return new Promise((resolve, reject) => {
-    if (activeStream) {
-      activeStream.close();
-      activeStream = null;
-    }
-
     let resolvedReport = null;
 
     fetch(`${API_BASE}/api/analyze/github`, {
@@ -665,6 +700,7 @@ async function streamGithubAnalysis(prUrl) {
         if (done) {
           hideStreamLog();
           setLoading(false);
+          _restoreInput();
           if (resolvedReport) {
             finalizeStreamSteps(resolvedReport);
             renderReport(resolvedReport);
@@ -694,6 +730,7 @@ async function streamGithubAnalysis(prUrl) {
               hideStreamLog();
               showError(data.message);
               setLoading(false);
+              _restoreInput();
               reject(new Error(data.message));
               return;
             }
@@ -707,6 +744,7 @@ async function streamGithubAnalysis(prUrl) {
       hideStreamLog();
       showError(err.message);
       setLoading(false);
+      _restoreInput();
       reject(err);
     });
   });
@@ -752,7 +790,7 @@ async function runCustomAnalysis() {
     }
     document.getElementById('custom-modal').style.display = 'none';
     setLoading(true);
-    clearUI();
+    resetUI();
     if (prTitleEl) prTitleEl.textContent = prUrl;
     analysisStartTime = Date.now();
     try {
@@ -769,7 +807,7 @@ async function runCustomAnalysis() {
     }
     document.getElementById('custom-modal').style.display = 'none';
     setLoading(true);
-    clearUI();
+    resetUI();
     currentDiff = diff;
     DiffViewer.renderDiff('diff-container', diff, []);
     if (prTitleEl) prTitleEl.textContent = 'Custom PR';

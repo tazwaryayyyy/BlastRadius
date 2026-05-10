@@ -393,6 +393,7 @@ body::after {
 
 .panel-body {
   flex: 1;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden
 }
@@ -681,7 +682,9 @@ body::after {
 /* Recommendation bar */
 #recommendation-bar {
   padding: 0 14px 14px;
-  display: none
+  display: none;
+  position: relative;
+  z-index: 2;
 }
 
 #merge-verdict {
