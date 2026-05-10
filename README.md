@@ -6,7 +6,7 @@
 
 Paste a GitHub PR URL. Get the full call-chain impact report — powered by two autonomous AI agents — before you merge.
 
-[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-bot_ready-2088FF?logo=github-actions&logoColor=white)](https://github.com/msanmaz/blastradius/blob/main/.github/workflows/blastradius.yml)
+[![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-bot_ready-2088FF?logo=github-actions&logoColor=white)](https://github.com/tazwaryayyyy/BlastRadius/blob/main/.github/workflows/blastradius.yml)
 [![Live Demo](https://img.shields.io/badge/Live_Demo-blastradius--rosy.vercel.app-black?logo=vercel)](https://blastradius-rosy.vercel.app/)
 [![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
@@ -71,7 +71,7 @@ Name:  BLASTRADIUS_API_URL
 Value: https://blastradius-api-dz0l.onrender.com
 ```
 
-Then copy [`.github/workflows/blastradius.yml`](.github/workflows/blastradius.yml) into your own repo. No other configuration needed.
+Then copy [`.github/workflows/blastradius.yml`](https://github.com/tazwaryayyyy/BlastRadius/blob/main/.github/workflows/blastradius.yml) into your own repo. No other configuration needed.
 
 <!-- Add screenshot of bot PR comment here -->
 
@@ -82,7 +82,7 @@ The bot comment includes: a risk-level table for every impacted call chain, auto
 ## Running Locally
 
 ```bash
-git clone https://github.com/msanmaz/blastradius.git
+git clone https://github.com/tazwaryayyyy/BlastRadius.git
 cd blastradius/backend
 cp .env.example .env        # fill in GEMINI_API_KEY
 pip install -r requirements.txt
