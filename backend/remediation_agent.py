@@ -52,7 +52,8 @@ class RemediationAgent:
                 if c.get("risk") == "CRITICAL" and not c.get("has_tests", True)
             ])
             stubs_count = len(remediations)
-            incident_cost = critical_uncovered_count * INCIDENT_RESTORE_HOURS * COST_PER_HOUR
+            incident_cost = critical_uncovered_count * \
+                INCIDENT_RESTORE_HOURS * COST_PER_HOUR
             hours_saved = stubs_count * HOURS_SAVED_PER_STUB
             cost_estimate = CostEstimate(
                 incident_cost_usd=round(incident_cost, 2),

@@ -61,6 +61,7 @@ class TraceAgent:
                 continue
             callee_name = os.path.splitext(os.path.basename(callee_path))[0]
             ext = os.path.splitext(caller_file)[1]
-            chain["verification_status"] = verify_call(caller_content, callee_name, ext)
+            chain["verification_status"] = verify_call(
+                caller_content, callee_name, ext)
 
         return report_dict
