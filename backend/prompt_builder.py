@@ -12,6 +12,7 @@ Design principles:
 
 from models import DiffResult
 from repo_loader import build_file_tree, get_context_bundle
+from config import CONTEXT_BUDGET_CHARS, CONTEXT_BUDGET_MIN
 
 # -----------------------------------------------------------------
 # Extension → language mapping for syntax highlighting in the prompt
@@ -125,8 +126,9 @@ def build_user_prompt(
     # ── 1. Repository file contents (context-limited, priority-ordered) ──
     # Keep prompt under provider payload limits by adapting context to diff size.
     # Larger diffs consume more budget, so repository context is reduced accordingly.
-    dynamic_repo_budget = max(12_000, 38_000 - len(diff.raw_diff))
-    bundle = get_context_bundle(
+    dynamic_repo_budget = max(
+        CONTEXT_BUDGET_MIN, CONTEXT_BUDGET_CHARS - len(diff.raw_diff))
+    bundle, _stats = get_context_bundle(
         all_files,
         diff.changed_files,
         diff.symbols,

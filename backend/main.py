@@ -1,17 +1,26 @@
 """
 main.py
-BlastRadius — FastAPI backend
+BlastRadius — FastAPI backend (Gemini multi-agent edition)
 
 Endpoints:
-  POST /api/analyze       Full analysis, returns BlastRadiusReport
-  GET  /api/demo          One-click demo using pre-seeded PR + repo
-  GET  /api/stream        SSE streaming version of /analyze
-  GET  /api/health        Liveness probe
+  GET  /api/health            Liveness probe (also / and /health)
+  GET  /api/warmup            Pre-loads demo repo into memory
+  POST /api/analyze           Full analysis, returns BlastRadiusReport
+  GET  /api/demo              One-click demo analysis against demo_repo
+  GET  /api/demo/diff         Returns raw demo diff text for the frontend viewer
+  POST /api/stream/session    Creates a single-use session token from a diff payload
+  GET  /api/stream            SSE stream of stage events + final report (session_id)
+  POST /api/analyze/github    SSE stream triggered by a GitHub PR URL
+  GET  /api/report/{id}       Retrieve a previously stored report by UUID
 """
 
+import asyncio
 import json
 import logging
 import os
+import time
+import uuid
+from collections import OrderedDict
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query
@@ -19,11 +28,14 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
-from models import AnalyzeRequest, BlastRadiusReport, RiskSummary
-from repo_loader import load_repo
+from config import CONTEXT_BUDGET_CHARS, CONTEXT_BUDGET_MIN
 from diff_parser import parse_diff
+from models import AnalyzeRequest, BlastRadiusReport, GithubAnalyzeRequest, RiskSummary
 from prompt_builder import build_system_prompt, build_user_prompt
-from bob_client import analyze as bob_analyze, analyze_stream
+from remediation_agent import RemediationAgent
+from report_store import get_report, store_report
+from repo_loader import load_repo
+from trace_agent import TraceAgent
 
 logging.basicConfig(level=logging.INFO,
                     format="%(levelname)s  %(name)s  %(message)s")
@@ -32,56 +44,64 @@ logger = logging.getLogger("blastradius")
 # ── App ───────────────────────────────────────────────────────────
 app = FastAPI(
     title="BlastRadius",
-    description="Pre-merge impact prediction powered by IBM Bob",
-    version="1.0.0",
+    description="Pre-merge impact prediction powered by Google Gemini",
+    version="2.0.0",
 )
 
+CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000").split(",")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=CORS_ORIGINS,
+    allow_methods=["GET", "POST"],
+    allow_headers=["Content-Type"],
+    allow_credentials=False,
 )
 
-# Serve frontend static files if present
 FRONTEND_DIR = Path(__file__).parent.parent / "frontend"
 if FRONTEND_DIR.exists():
     app.mount("/static", StaticFiles(directory=str(FRONTEND_DIR)), name="static")
 
-# Absolute base path for demo assets.
-# In local dev, this resolves to repo root.
-# In container images, backend files may be copied to /app directly.
 HERE = Path(__file__).resolve().parent
-if (HERE / "demo_prs").exists() and (HERE / "demo_repo").exists():
-    BASE_DIR = HERE
-else:
-    BASE_DIR = HERE.parent
+BASE_DIR = HERE if (HERE / "demo_prs").exists() and (HERE /
+                                                     "demo_repo").exists() else HERE.parent
+ALLOWED_REPO_ROOT = BASE_DIR.resolve()
+
+_session_store: OrderedDict[str, dict] = OrderedDict()
+_SESSION_LIMIT = 500
 
 
-# ── Helpers ───────────────────────────────────────────────────────
+# ── Security ──────────────────────────────────────────────────────
+
+def safe_repo_path(raw: str) -> Path:
+    candidate = (ALLOWED_REPO_ROOT / raw).resolve()
+    if not str(candidate).startswith(str(ALLOWED_REPO_ROOT)):
+        raise HTTPException(status_code=400, detail="Invalid repository path.")
+    if not candidate.exists():
+        raise HTTPException(
+            status_code=404, detail="Repository path not found.")
+    return candidate
+
+
+# ── Report normalisation ──────────────────────────────────────────
 
 def _parse_report(raw_json: str, pr_title: str | None) -> BlastRadiusReport:
-    """Parse Bob's JSON output into a validated BlastRadiusReport."""
     try:
         data = json.loads(raw_json)
     except json.JSONDecodeError as exc:
+        logger.error("LLM response JSON parse failure: %s", exc)
         raise HTTPException(
-            status_code=502, detail=f"Bob returned invalid JSON: {exc}") from exc
+            502, "Analysis service returned an unreadable response.") from exc
 
-    # Normalise risk_summary — Bob may return lowercase keys
     rs = data.get("risk_summary", {})
-    normalised_rs = {k.upper(): v for k, v in rs.items()}
     data["risk_summary"] = RiskSummary(**{
-        lvl: normalised_rs.get(lvl, 0)
+        lvl: {k.upper(): v for k, v in rs.items()}.get(lvl, 0)
         for lvl in ("CRITICAL", "HIGH", "MEDIUM", "LOW")
     })
 
-    # Normalise call chain confidence — Bob may return lowercase ("high" → "HIGH")
     for chain in data.get("call_chains", []):
         if isinstance(chain, dict) and "confidence" in chain:
             chain["confidence"] = str(chain["confidence"]).upper()
 
-    # Ensure suggested_actions is always a list (Bob may return null or omit it)
     if not isinstance(data.get("suggested_actions"), list):
         data["suggested_actions"] = []
 
@@ -90,46 +110,117 @@ def _parse_report(raw_json: str, pr_title: str | None) -> BlastRadiusReport:
     try:
         return BlastRadiusReport(**data)
     except Exception as exc:
+        logger.error("Report schema validation failure: %s", exc)
         raise HTTPException(
-            status_code=502, detail=f"Report validation failed: {exc}") from exc
+            502, "Analysis service returned an unreadable response.") from exc
 
 
-async def _run_analysis(req: AnalyzeRequest) -> BlastRadiusReport:
-    """Core pipeline: load repo → parse diff → build prompt → call Bob → parse result."""
-    # Resolve repo path relative to project root
-    repo_path = str(
-        BASE_DIR / req.repo_path) if not os.path.isabs(req.repo_path) else req.repo_path
+def _stage(name: str) -> str:
+    return f"data: {json.dumps({'type': 'stage', 'stage': name})}\n\n"
+
+
+def _sse_response(gen) -> StreamingResponse:
+    return StreamingResponse(
+        gen,
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+# ── Shared async pipeline generator ──────────────────────────────
+
+async def _analysis_event_gen(
+    all_files: dict[str, str],
+    diff_text: str,
+    pr_title: str | None,
+    image_b64: str | None = None,
+    mime_type: str | None = None,
+    context_stats=None,
+):
+    q: asyncio.Queue[str] = asyncio.Queue()
 
     try:
-        all_files = load_repo(repo_path)
+        yield _stage("parsing_diff")
+        diff_result = parse_diff(diff_text)
+        if not diff_result.changed_files:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Could not extract changed files from diff.'})}\n\n"
+            return
+
+        trace = TraceAgent(all_files)
+        trace_task = asyncio.create_task(
+            trace.run(diff_result, image_b64=image_b64, mime_type=mime_type,
+                      stage_callback=lambda s: q.put_nowait(_stage(s)))
+        )
+        while not trace_task.done():
+            while not q.empty():
+                yield q.get_nowait()
+            await asyncio.sleep(0.05)
+        while not q.empty():
+            yield q.get_nowait()
+        report_dict = await trace_task
+
+        rem_task = asyncio.create_task(
+            RemediationAgent().run(report_dict, all_files,
+                                   stage_callback=lambda s: q.put_nowait(_stage(s)))
+        )
+        while not rem_task.done():
+            while not q.empty():
+                yield q.get_nowait()
+            await asyncio.sleep(0.05)
+        while not q.empty():
+            yield q.get_nowait()
+        report_dict = await rem_task
+
+        if context_stats:
+            report_dict["context_stats"] = context_stats.model_dump()
+
+        report = _parse_report(json.dumps(report_dict), pr_title)
+        report_id = await store_report(report)
+
+        yield f"data: {json.dumps({'type': 'result', 'report': report.model_dump(), 'report_id': report_id})}\n\n"
+        yield 'data: {"type": "done"}\n\n'
+
+    except HTTPException as exc:
+        logger.error("Stream pipeline error: %s", exc.detail)
+        yield f"data: {json.dumps({'type': 'error', 'message': exc.detail})}\n\n"
+    except (ValueError, RuntimeError, json.JSONDecodeError) as exc:
+        logger.error("Stream agent error: %s", exc)
+        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis service error.'})}\n\n"
+
+
+# ── Non-streaming pipeline (used by /api/analyze and /api/demo) ───
+
+async def _run_analysis(req: AnalyzeRequest) -> BlastRadiusReport:
+    repo_path = safe_repo_path(req.repo_path)
+
+    try:
+        all_files = load_repo(str(repo_path))
     except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
+        raise HTTPException(404, "Repository path not found.") from exc
 
     if not all_files:
-        raise HTTPException(
-            status_code=400, detail="No readable files found in repo_path")
+        raise HTTPException(400, "No readable files found in repo_path")
 
     diff_result = parse_diff(req.diff)
     if not diff_result.changed_files:
-        raise HTTPException(
-            status_code=400, detail="Could not extract changed files from diff")
+        raise HTTPException(400, "Could not extract changed files from diff")
 
-    system = build_system_prompt()
-    user = build_user_prompt(all_files, diff_result)
-
-    logger.info(
-        "Analyzing PR: %r | changed=%s | symbols=%s | repo_files=%d",
-        req.pr_title, diff_result.changed_files, diff_result.symbols, len(
-            all_files),
-    )
+    logger.info("Analyzing PR: %r | changed=%s | repo_files=%d",
+                req.pr_title, diff_result.changed_files, len(all_files))
 
     try:
-        raw_json = await bob_analyze(system, user)
+        trace = TraceAgent(all_files)
+        report_dict = await trace.run(diff_result)
+        report_dict = await RemediationAgent().run(report_dict, all_files)
     except ValueError as exc:
-        raise HTTPException(status_code=503, detail=str(exc)) from exc
+        logger.error("Analysis service error: %s", exc)
+        raise HTTPException(
+            503, "Analysis service is not configured.") from exc
     except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=str(exc)) from exc
-    return _parse_report(raw_json, req.pr_title)
+        logger.error("Analysis failed: %s", exc)
+        raise HTTPException(502, "Analysis service is unavailable.") from exc
+
+    return _parse_report(json.dumps(report_dict), req.pr_title)
 
 
 # ── Routes ────────────────────────────────────────────────────────
@@ -141,87 +232,136 @@ async def health():
     return {"status": "ok", "service": "blastradius"}
 
 
+@app.get("/api/warmup")
+async def warmup():
+    try:
+        load_repo(str(safe_repo_path("demo_repo")))
+    except HTTPException:
+        pass
+    return {"status": "warm"}
+
+
 @app.post("/api/analyze", response_model=BlastRadiusReport)
 async def analyze(req: AnalyzeRequest) -> BlastRadiusReport:
-    """Full analysis endpoint. Returns BlastRadiusReport JSON."""
     return await _run_analysis(req)
 
 
 @app.get("/api/demo", response_model=BlastRadiusReport)
 async def demo() -> BlastRadiusReport:
-    """
-    One-click demo endpoint.
-    Loads the pre-seeded rate_limiter PR diff against the demo_repo.
-    No request body needed — ideal for the hackathon presentation.
-    """
     diff_path = BASE_DIR / "demo_prs" / "pr_ratelimiter.diff"
     if not diff_path.exists():
-        raise HTTPException(status_code=404, detail="Demo diff not found")
-
-    diff_text = diff_path.read_text(encoding="utf-8")
+        raise HTTPException(404, "Demo diff not found")
     req = AnalyzeRequest(
-        diff=diff_text,
+        diff=diff_path.read_text(encoding="utf-8"),
         repo_path="demo_repo",
         pr_title="fix: tighten rate limit window for security compliance",
     )
     return await _run_analysis(req)
 
 
-@app.get("/api/stream")
-async def stream_analysis(
-    diff: str = Query(..., description="Unified diff text"),
-    repo_path: str = Query("demo_repo"),
-    pr_title: str = Query(None),
-):
-    """
-    SSE streaming endpoint.
-    Returns Bob's raw reasoning token-by-token, then a final [DONE] event
-    with the complete BlastRadiusReport JSON.
-
-    Frontend listens with EventSource or fetch + ReadableStream.
-    """
-    repo_full = str(
-        BASE_DIR / repo_path) if not os.path.isabs(repo_path) else repo_path
-
-    try:
-        all_files = load_repo(repo_full)
-    except FileNotFoundError as exc:
-        raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-    diff_result = parse_diff(diff)
-    system = build_system_prompt()
-    user = build_user_prompt(all_files, diff_result)
-
-    accumulated = []
-
-    async def event_gen():
-        try:
-            async for chunk in analyze_stream(system, user):
-                accumulated.append(chunk)
-                # Stream raw tokens to frontend
-                yield f"data: {json.dumps({'type': 'token', 'content': chunk, 'token_count': len(''.join(accumulated))})}\n\n"
-
-            # Parse the accumulated JSON and send the final structured report
-            raw_json = "".join(accumulated)
-            report = _parse_report(raw_json, pr_title)
-            yield f"data: {json.dumps({'type': 'done', 'report': report.model_dump()})}\n\n"
-        except Exception as exc:  # pylint: disable=broad-exception-caught
-            yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
-
-    return StreamingResponse(
-        event_gen(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no",  # Disable nginx buffering
-        },
-    )
-
-
 @app.get("/api/demo/diff")
 async def demo_diff() -> dict:
-    """Return the raw demo diff text (used by frontend diff viewer)."""
     diff_path = BASE_DIR / "demo_prs" / "pr_ratelimiter.diff"
     if not diff_path.exists():
-        raise HTTPException(status_code=404, detail="Demo diff not found")
-    return {"diff": diff_path.read_text(encoding="utf-8"), "pr_title": "fix: tighten rate limit window for security compliance"}
+        raise HTTPException(404, "Demo diff not found")
+    return {
+        "diff": diff_path.read_text(encoding="utf-8"),
+        "pr_title": "fix: tighten rate limit window for security compliance",
+    }
+
+
+@app.post("/api/stream/session")
+async def create_stream_session(req: AnalyzeRequest) -> dict:
+    safe_path = safe_repo_path(req.repo_path)
+    session_id = str(uuid.uuid4())
+    _session_store[session_id] = {
+        "diff": req.diff,
+        "repo_path": str(safe_path),
+        "pr_title": req.pr_title,
+        "created_at": time.monotonic(),
+    }
+    if len(_session_store) > _SESSION_LIMIT:
+        _session_store.popitem(last=False)
+    return {"session_id": session_id}
+
+
+@app.get("/api/stream")
+async def stream_analysis(session_id: str = Query(...)):
+    session = _session_store.pop(session_id, None)
+    if session is None:
+        raise HTTPException(404, "Session not found or already used.")
+
+    diff_text = session["diff"]
+    repo_path = session["repo_path"]
+    pr_title = session.get("pr_title")
+    image_b64 = session.get("image_b64")
+    mime_type = session.get("mime_type")
+
+    async def event_gen():
+        yield _stage("loading_repo")
+        try:
+            all_files = load_repo(repo_path)
+        except FileNotFoundError:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Repository path not found.'})}\n\n"
+            return
+        if not all_files:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'No readable files found.'})}\n\n"
+            return
+        async for chunk in _analysis_event_gen(all_files, diff_text, pr_title, image_b64, mime_type):
+            yield chunk
+
+    return _sse_response(event_gen())
+
+
+@app.post("/api/analyze/github")
+async def analyze_github_pr(body: GithubAnalyzeRequest):
+    import httpx
+    from github_loader import fetch_pr_diff, fetch_repo_context, parse_pr_url
+
+    try:
+        owner, repo, pr_number = await parse_pr_url(body.pr_url)
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+    gh_headers = {"Accept": "application/vnd.github+json"}
+    gh_token = os.getenv("GITHUB_TOKEN", "")
+    if gh_token:
+        gh_headers["Authorization"] = f"Bearer {gh_token}"
+
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        pr_resp = await client.get(
+            f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}",
+            headers=gh_headers,
+        )
+        if pr_resp.status_code == 404:
+            raise HTTPException(404, "PR not found.")
+        pr_resp.raise_for_status()
+        pr_data = pr_resp.json()
+
+    ref = pr_data["base"]["sha"]
+    diff_text = await fetch_pr_diff(owner, repo, pr_number)
+    diff_result = parse_diff(diff_text)
+    files, stats = await fetch_repo_context(
+        owner, repo, ref, priority_files=diff_result.changed_files
+    )
+    pr_title = pr_data.get("title")
+
+    async def event_gen():
+        yield _stage("loading_repo")
+        if not files:
+            yield f"data: {json.dumps({'type': 'error', 'message': 'No readable files found in repo.'})}\n\n"
+            return
+        async for chunk in _analysis_event_gen(
+            files, diff_text, pr_title, body.image_b64, body.mime_type, stats
+        ):
+            yield chunk
+
+    return _sse_response(event_gen())
+
+
+@app.get("/api/report/{report_id}")
+async def get_report_endpoint(report_id: str):
+    report = await get_report(report_id)
+    if not report:
+        raise HTTPException(404, "Report not found or expired.")
+    return report

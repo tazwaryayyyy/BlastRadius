@@ -8,38 +8,40 @@
 
 /* global d3 */
 
-const RISK_COLOR = {
-  CRITICAL: '#ff4444',
-  HIGH: '#ff8c00',
-  MEDIUM: '#f0c040',
-  LOW: '#40c080',
-  CHANGED: '#44aaff',
-  SAFE: '#2c3340',
-};
-
-const RISK_GLOW = {
-  CRITICAL: 'rgba(255, 68, 68, 0.5)',
-  HIGH: 'rgba(255, 140, 0, 0.4)',
-  MEDIUM: 'rgba(240, 192, 64, 0.3)',
-  LOW: 'rgba(64, 192, 128, 0.3)',
-  CHANGED: 'rgba(68, 170, 255, 0.5)',
-};
+function getRiskColor(level) {
+  return getComputedStyle(document.documentElement)
+    .getPropertyValue(`--${level.toLowerCase()}`)
+    .trim();
+}
 
 let svg = null;
 let simulation = null;
 let onNodeClickCb = null;
+let resizeHandler = null;
+let pulseTokens = [];
 
-/**
- * Initialize the SVG canvas.
- * Call once on page load.
- */
+function destroy() {
+  if (simulation) {
+    simulation.stop();
+    simulation = null;
+  }
+  pulseTokens.forEach((t) => { t.value = true; });
+  pulseTokens = [];
+  if (resizeHandler) {
+    window.removeEventListener('resize', resizeHandler);
+    resizeHandler = null;
+  }
+  if (svg) {
+    svg.remove();
+    svg = null;
+  }
+}
+
 function initGraph(containerId, onNodeClick) {
+  destroy();
   onNodeClickCb = onNodeClick;
   const container = document.getElementById(containerId);
   if (!container) return;
-
-  // Clean up previous instance
-  d3.select(`#${containerId} svg`).remove();
 
   const { width, height } = container.getBoundingClientRect();
 
@@ -78,19 +80,19 @@ function initGraph(containerId, onNodeClick) {
       .attr('orient', 'auto-start-reverse')
       .append('path')
       .attr('d', 'M 0 0 L 10 5 L 0 10 z')
-      .attr('fill', RISK_COLOR[risk])
+      .attr('fill', getRiskColor(risk))
       .attr('opacity', 0.5);
   });
 
-  // Re-render on window resize
-  window.addEventListener('resize', () => {
+  resizeHandler = () => {
     const { width: w, height: h } = container.getBoundingClientRect();
     svg.attr('width', w).attr('height', h);
     if (simulation) {
       simulation.force('center', d3.forceCenter(w / 2, h / 2));
       simulation.alpha(0.3).restart();
     }
-  });
+  };
+  window.addEventListener('resize', resizeHandler);
 }
 
 
@@ -183,7 +185,7 @@ function renderGraph(report) {
     .data(links)
     .join('line')
     .attr('class', 'link')
-    .attr('stroke', (d) => RISK_COLOR[d.risk] || RISK_COLOR.SAFE)
+    .attr('stroke', (d) => getRiskColor(d.risk) || getRiskColor('safe'))
     .attr('stroke-width', 1.5)
     .attr('marker-end', (d) => `url(#arrow-${d.risk})`);
 
@@ -211,12 +213,11 @@ function renderGraph(report) {
   node.append('circle')
     .attr('r', (d) => d.is_changed ? CHANGED_RADIUS : BASE_RADIUS)
     .attr('fill', (d) => {
-      // Use a subtle fill for all nodes, blue for changed
       if (d.is_changed) return 'rgba(68,170,255,0.13)';
-      const color = RISK_COLOR[d.risk] || RISK_COLOR.SAFE;
+      const color = getRiskColor(d.risk) || getRiskColor('safe');
       return `${color}18`;
     })
-    .attr('stroke', (d) => RISK_COLOR[d.risk] || RISK_COLOR.SAFE)
+    .attr('stroke', (d) => getRiskColor(d.risk) || getRiskColor('safe'))
     .attr('stroke-width', (d) => d.is_changed ? 2.5 : 1.7)
     .attr('stroke-dasharray', (d) => d.has_tests ? 'none' : '4 3')
     .attr('filter', (d) =>
@@ -227,7 +228,7 @@ function renderGraph(report) {
   node.append('text')
     .text((d) => d.label.length > 18 ? d.label.slice(0, 16) + '…' : d.label)
     .attr('dy', LABEL_DY)
-    .style('fill', (d) => RISK_COLOR[d.risk] || '#4a5060');
+    .style('fill', (d) => getRiskColor(d.risk) || getRiskColor('safe'));
 
   // CRITICAL pulse ring (animated)
   node.filter((d) => d.risk === 'CRITICAL')
@@ -235,7 +236,7 @@ function renderGraph(report) {
     .attr('class', 'pulse-ring')
     .attr('r', (d) => d.is_changed ? PULSE_CHANGED : PULSE_BASE)
     .attr('fill', 'none')
-    .attr('stroke', '#ff4444')
+    .attr('stroke', getRiskColor('critical'))
     .attr('stroke-width', 1.5)
     .attr('opacity', 0.55)
     .call(addPulse);
@@ -260,7 +261,11 @@ function renderGraph(report) {
 
 
 function addPulse(selection) {
+  const cancelled = { value: false };
+  pulseTokens.push(cancelled);
+
   function repeat() {
+    if (cancelled.value) return;
     selection
       .attr('r', function (d) { return d.is_changed ? 26 : 20; })
       .attr('opacity', 0.55)
@@ -318,4 +323,4 @@ function drag(sim) {
 }
 
 
-window.BlastGraph = { initGraph, renderGraph };
+window.BlastGraph = { initGraph, renderGraph, destroy };

@@ -50,8 +50,8 @@ function renderDiff(containerId, diffText, blastEntrySymbols = []) {
     // Normal diff lines
     let type = 'context';
     let sign = ' ';
-    if (line.startsWith('+')) { type = 'added';   sign = '+'; }
-    if (line.startsWith('-')) { type = 'removed';  sign = '-'; }
+    if (line.startsWith('+')) { type = 'added'; sign = '+'; }
+    if (line.startsWith('-')) { type = 'removed'; sign = '-'; }
 
     const content = line.slice(1); // strip leading +/-/ 
 
@@ -81,15 +81,6 @@ function renderDiff(containerId, diffText, blastEntrySymbols = []) {
 function clearDiff(containerId) {
   const container = document.getElementById(containerId);
   if (container) container.innerHTML = '';
-}
-
-
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
 }
 
 

@@ -1,6 +1,9 @@
 import os
 from pathlib import Path
 
+from config import CONTEXT_BUDGET_CHARS
+from models import ContextStats
+
 SKIP_EXTENSIONS = {
     '.lock', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.ico',
     '.woff', '.woff2', '.ttf', '.eot', '.map', '.min.js',
@@ -14,7 +17,6 @@ SKIP_DIRS = {
 
 MAX_FILE_CHARS = 50_000   # Skip files larger than this (likely generated)
 MAX_LINE_LENGTH = 500      # Skip minified files
-TOTAL_CONTEXT_LIMIT = 35_000  # Soft cap on total chars sent to Bob
 
 
 def load_repo(path: str) -> dict[str, str]:
@@ -137,14 +139,15 @@ def get_context_bundle(
     changed_files: list[str],
     symbols: list[str],
     context_limit: int | None = None,
-) -> dict[str, str]:
+) -> tuple[dict[str, str], ContextStats]:
     """
-    Return a subset of files within the context limit, priority-ordered.
+    Return a subset of files within the context limit, priority-ordered,
+    along with ContextStats describing what was sent.
     """
     ordered_paths = prioritize_files(all_files, changed_files, symbols)
     bundle: dict[str, str] = {}
     total_chars = 0
-    limit = TOTAL_CONTEXT_LIMIT if context_limit is None else max(
+    limit = CONTEXT_BUDGET_CHARS if context_limit is None else max(
         2_000, context_limit)
 
     for path in ordered_paths:
@@ -154,4 +157,10 @@ def get_context_bundle(
         bundle[path] = content
         total_chars += len(content)
 
-    return bundle
+    stats = ContextStats(
+        files_in_repo=len(all_files),
+        files_sent_to_model=len(bundle),
+        chars_sent=total_chars,
+        budget_used_pct=round(total_chars / max(limit, 1) * 100, 1),
+    )
+    return bundle, stats

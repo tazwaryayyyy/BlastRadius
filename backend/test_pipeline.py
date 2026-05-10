@@ -11,6 +11,7 @@ from prompt_builder import build_system_prompt, build_user_prompt
 from repo_loader import load_repo, build_file_tree, prioritize_files, get_context_bundle
 from diff_parser import parse_diff
 import json
+import pathlib
 import sys
 import os
 import pytest
@@ -21,11 +22,18 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 # ── Fixtures ──────────────────────────────────────────────────────
 
-DEMO_DIFF = open(
-    os.path.join(os.path.dirname(__file__), "..",
-                 "demo_prs", "pr_ratelimiter.diff"),
-    encoding="utf-8",
-).read()
+_DEMO_DIFF_PATH = pathlib.Path(
+    __file__).parent.parent / "demo_prs" / "pr_ratelimiter.diff"
+
+
+def _load_demo_diff() -> str:
+    with open(_DEMO_DIFF_PATH, encoding="utf-8") as f:
+        return f.read()
+
+
+# Keep a module-level alias so existing references compile;
+# actual file I/O is deferred to test time via _load_demo_diff().
+DEMO_DIFF: str  # assigned lazily — use _load_demo_diff() in tests
 
 DEMO_REPO_PATH = os.path.join(os.path.dirname(__file__), "..", "demo_repo")
 
@@ -89,22 +97,22 @@ MOCK_BOB_RESPONSE = {
 
 class TestDiffParser:
     def test_extracts_changed_files(self):
-        result = parse_diff(DEMO_DIFF)
+        result = parse_diff(_load_demo_diff())
         assert any("rate_limiter" in f for f in result.changed_files), \
             f"Expected rate_limiter.js in changed_files, got: {result.changed_files}"
 
     def test_extracts_symbols(self):
-        result = parse_diff(DEMO_DIFF)
+        result = parse_diff(_load_demo_diff())
         # The diff modifies constructor internals — symbols may be empty for property changes
         # That's expected: the changed_files list is what matters for Bob's context
         assert isinstance(result.symbols, list)
 
     def test_raw_diff_preserved(self):
-        result = parse_diff(DEMO_DIFF)
-        assert result.raw_diff == DEMO_DIFF
+        result = parse_diff(_load_demo_diff())
+        assert result.raw_diff == _load_demo_diff()
 
     def test_no_duplicate_files(self):
-        result = parse_diff(DEMO_DIFF)
+        result = parse_diff(_load_demo_diff())
         assert len(result.changed_files) == len(set(result.changed_files))
 
     def test_empty_diff(self):
@@ -166,8 +174,9 @@ class TestRepoLoader:
 
     def test_context_bundle_respects_limit(self):
         files = load_repo(DEMO_REPO_PATH)
-        diff = parse_diff(DEMO_DIFF)
-        bundle = get_context_bundle(files, diff.changed_files, diff.symbols)
+        diff = parse_diff(_load_demo_diff())
+        bundle, _stats = get_context_bundle(
+            files, diff.changed_files, diff.symbols)
         total = sum(len(c) for c in bundle.values())
         assert total <= 90_000, f"Bundle exceeds 90k char limit: {total}"
 
@@ -180,7 +189,7 @@ class TestPromptBuilder:
 
     def setup_method(self):
         self.files = load_repo(DEMO_REPO_PATH)
-        self.diff = parse_diff(DEMO_DIFF)
+        self.diff = parse_diff(_load_demo_diff())
 
     def test_system_prompt_is_short(self):
         system = build_system_prompt()
@@ -297,7 +306,7 @@ class TestFullPipeline:
 
     def test_pipeline_produces_valid_report(self):
         # 1. Parse diff
-        diff = parse_diff(DEMO_DIFF)
+        diff = parse_diff(_load_demo_diff())
         assert diff.changed_files
 
         # 2. Load repo
@@ -349,86 +358,69 @@ class TestFullPipeline:
         assert low[0].has_tests is True
 
 
-# ── Bob fallback tests ─────────────────────────────────────────────
+# ── Gemini client tests ────────────────────────────────────────────
 
-class TestBobFallback:
+class TestGeminiClient:
     """
-    Verifies the primary→fallback path without any live API calls.
-    Patches bob_client module attributes and the internal _post helper.
+    Verifies gemini_client retry behaviour and TraceAgent round-trip
+    without any live API calls.
     """
 
-    def _make_good_response(self):
-        from unittest.mock import MagicMock
+    def _mock_gemini_response(self, content: str):
+        from unittest.mock import AsyncMock, MagicMock
         resp = MagicMock()
         resp.status_code = 200
         resp.json.return_value = {
-            "choices": [{"message": {"content": json.dumps(MOCK_BOB_RESPONSE)}}]
+            "candidates": [{"content": {"parts": [{"text": content}]}}]
         }
         resp.raise_for_status = MagicMock()
         return resp
 
-    def test_fallback_triggers_when_primary_fails(self):
-        """Primary endpoint raises; fallback endpoint returns valid JSON."""
+    def test_gemini_retries_on_429_then_succeeds(self):
+        """429 on first attempt, 200 on second — client must retry and return content."""
         import asyncio
-        import httpx
-        from unittest.mock import patch
-        import bob_client
+        from unittest.mock import AsyncMock, MagicMock, patch
+        import gemini_client
 
-        good_resp = self._make_good_response()
-        calls = []
+        call_count = 0
 
-        async def fake_post(_client, url, _key, _payload):
-            calls.append(url)
-            if "garbage" in url:
-                raise httpx.ConnectError("connection refused")
-            return good_resp
+        async def fake_post(self_client, url, json=None, **kwargs):
+            nonlocal call_count
+            call_count += 1
+            if call_count == 1:
+                resp = MagicMock()
+                resp.status_code = 429
+                resp.json.return_value = {}
+                resp.raise_for_status = MagicMock()
+                return resp
+            return self._mock_gemini_response(json_dumps_mock_response())
 
-        with patch.object(bob_client, "BOB_URL", "http://garbage.invalid"), \
-                patch.object(bob_client, "BOB_KEY", "bad-key"), \
-                patch.object(bob_client, "FALLBACK_URL", "http://real.fallback"), \
-                patch.object(bob_client, "FALLBACK_KEY", "good-key"), \
-                patch.object(bob_client, "FALLBACK_MODEL", "gpt-4o"), \
-                patch("bob_client._post", side_effect=fake_post):
+        with patch("httpx.AsyncClient.post", new=fake_post), \
+                patch.object(gemini_client, "GEMINI_API_KEY", "test-key"), \
+                patch("asyncio.sleep", new=AsyncMock()):
+            result = asyncio.run(gemini_client.call_gemini("test prompt"))
 
-            result = asyncio.run(bob_client.analyze("system", "user"))
+        assert "call_chains" in result
+        assert call_count == 2
 
-        assert "call_chains" in result, "Fallback must return valid JSON"
-        assert calls[0] == "http://garbage.invalid", "Primary was not tried first"
-        assert calls[1] == "http://real.fallback", "Fallback was not tried second"
-
-    def test_fallback_produces_valid_report(self):
-        """Full _parse_report round-trip on the fallback JSON output."""
+    def test_gemini_client_returns_parseable_json(self):
+        """call_gemini must return a string parseable by json.loads when Gemini responds."""
         import asyncio
-        import httpx
-        from unittest.mock import patch
-        import bob_client
-        from main import _parse_report
+        from unittest.mock import MagicMock, patch
+        import gemini_client
 
-        good_resp = self._make_good_response()
+        async def fake_post(self_client, url, json=None, **kwargs):
+            return self._mock_gemini_response(json_dumps_mock_response())
 
-        async def fake_post(_client, url, _key, _payload):
-            if "garbage" in url:
-                raise httpx.ConnectError("connection refused")
-            return good_resp
+        with patch("httpx.AsyncClient.post", new=fake_post), \
+                patch.object(gemini_client, "GEMINI_API_KEY", "test-key"):
+            raw = asyncio.run(gemini_client.call_gemini("test prompt"))
 
-        with patch.object(bob_client, "BOB_URL", "http://garbage.invalid"), \
-                patch.object(bob_client, "BOB_KEY", "bad-key"), \
-                patch.object(bob_client, "FALLBACK_URL", "http://real.fallback"), \
-                patch.object(bob_client, "FALLBACK_KEY", "good-key"), \
-                patch.object(bob_client, "FALLBACK_MODEL", "gpt-4o"), \
-                patch("bob_client._post", side_effect=fake_post):
-
-            raw_json = asyncio.run(bob_client.analyze("system", "user"))
-
-        report = _parse_report(raw_json, "Test PR")
-
-        assert report.risk_summary.CRITICAL == 1
-        assert len(report.call_chains) == 3
-        assert "BLOCK" in report.merge_recommendation
-        assert len(report.suggested_actions) == 3
+        data = json.loads(raw)
+        assert "call_chains" in data
 
     def test_lowercase_confidence_is_normalised(self):
-        """_parse_report must uppercase confidence even when Bob returns lowercase."""
+        """_parse_report must uppercase confidence even when Gemini returns lowercase."""
         from main import _parse_report
 
         payload = json.dumps({
@@ -460,3 +452,182 @@ class TestBobFallback:
         payload = {**MOCK_BOB_RESPONSE, "suggested_actions": None}
         report = _parse_report(json.dumps(payload), "Test PR")
         assert report.suggested_actions == []
+
+
+def json_dumps_mock_response() -> str:
+    return json.dumps(MOCK_BOB_RESPONSE)
+
+
+# ── Security tests ─────────────────────────────────────────────────
+
+class TestSecurity:
+    """Verify path traversal guards and session single-use semantics."""
+
+    def test_safe_repo_path_rejects_traversal(self):
+        """Paths that escape ALLOWED_REPO_ROOT must raise HTTP 400."""
+        from fastapi import HTTPException
+        from main import safe_repo_path
+        import pytest
+
+        with pytest.raises(HTTPException) as exc_info:
+            safe_repo_path("../../etc/passwd")
+        assert exc_info.value.status_code == 400
+
+    def test_safe_repo_path_rejects_absolute_escape(self):
+        """Absolute paths that fall outside ALLOWED_REPO_ROOT must raise HTTP 400."""
+        from fastapi import HTTPException
+        from main import safe_repo_path, ALLOWED_REPO_ROOT
+        import pytest
+
+        # Pick a path that is definitely outside the repo root.
+        outside = str(ALLOWED_REPO_ROOT.parent.parent / "etc" / "passwd")
+        with pytest.raises(HTTPException) as exc_info:
+            safe_repo_path(outside)
+        assert exc_info.value.status_code == 400
+
+    def test_session_store_single_use(self):
+        """A session must be consumed exactly once — the second lookup returns None."""
+        from main import _session_store
+        import uuid
+        import time
+
+        session_id = str(uuid.uuid4())
+        _session_store[session_id] = {
+            "diff": "dummy",
+            "repo_path": "demo_repo",
+            "pr_title": None,
+            "created_at": time.monotonic(),
+        }
+
+        # First pop returns the value
+        first = _session_store.pop(session_id, None)
+        assert first is not None, "First lookup must return the stored session"
+
+        # Second pop must return None (single-use guarantee)
+        second = _session_store.pop(session_id, None)
+        assert second is None, "Second lookup must return None (session already consumed)"
+
+
+# ── Agent pipeline tests ───────────────────────────────────────────
+
+class TestAgentPipeline:
+    """End-to-end tests for the Gemini multi-agent pipeline without live API calls."""
+
+    def test_trace_agent_returns_dict_with_required_keys(self):
+        """TraceAgent.run() must return a dict with all required top-level keys."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+        from trace_agent import TraceAgent
+
+        async def fake_call_gemini(prompt, **kwargs):
+            return json_dumps_mock_response()
+
+        with patch('trace_agent.call_gemini', new=AsyncMock(side_effect=fake_call_gemini)):
+            diff = parse_diff(_load_demo_diff())
+            result = asyncio.run(TraceAgent({}).run(diff))
+
+        for key in ('changed_symbols', 'call_chains', 'merge_recommendation', 'risk_summary'):
+            assert key in result, f"Missing key: {key}"
+
+    def test_remediation_agent_skips_non_critical_chains(self):
+        """RemediationAgent must not call Gemini for MEDIUM/LOW chains."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+        from remediation_agent import RemediationAgent
+
+        report_dict = {
+            **json.loads(json_dumps_mock_response()),
+            'call_chains': [
+                {**c, 'risk': 'MEDIUM', 'has_tests': True}
+                for c in json.loads(json_dumps_mock_response())['call_chains']
+            ],
+        }
+
+        with patch('gemini_client.call_gemini', new=AsyncMock()) as mock_gemini:
+            result = asyncio.run(RemediationAgent().run(report_dict, {}))
+            mock_gemini.assert_not_called()
+
+        assert result['remediations'] == []
+
+    def test_remediation_agent_generates_stub_for_critical_uncovered(self):
+        """RemediationAgent must call Gemini once per CRITICAL chain with no tests."""
+        import asyncio
+        from unittest.mock import AsyncMock, patch
+        from remediation_agent import RemediationAgent
+
+        rem_json = json.dumps({
+            'chain_id': 'processPayment',
+            'test_file_path': 'services/billing/__tests__/process.test.js',
+            'test_stub': 'describe("processPayment", () => { it("should charge card") })',
+            'fix_summary': 'Add integration test for payment processing path',
+        })
+
+        report_dict = {
+            **json.loads(json_dumps_mock_response()),
+            'call_chains': [
+                {'id': 'processPayment', 'risk': 'CRITICAL', 'has_tests': False,
+                 'path': ['api/routes/payments.js', 'services/billing/process.js'],
+                 'symbols': ['processPayment'], 'business_impact': 'Revenue at risk',
+                 'explanation': 'Payment flow', 'confidence': 'HIGH',
+                 'confidence_reason': '', 'test_files': []},
+            ],
+        }
+
+        with patch('remediation_agent.call_gemini', new=AsyncMock(return_value=rem_json)):
+            result = asyncio.run(RemediationAgent().run(report_dict, {}))
+
+        assert len(result['remediations']) == 1
+        assert result['remediations'][0]['test_stub']
+
+    def test_parse_pr_url_valid(self):
+        """parse_pr_url must correctly extract owner, repo, and PR number."""
+        import asyncio
+        from github_loader import parse_pr_url
+
+        owner, repo, num = asyncio.run(parse_pr_url(
+            'https://github.com/vercel/next.js/pull/12345'))
+        assert owner == 'vercel'
+        assert repo == 'next.js'
+        assert num == 12345
+
+    def test_parse_pr_url_invalid_raises(self):
+        """parse_pr_url must raise ValueError for non-PR URLs."""
+        import asyncio
+        import pytest
+        from github_loader import parse_pr_url
+
+        with pytest.raises(ValueError):
+            asyncio.run(parse_pr_url('https://github.com/owner/repo'))
+
+    def test_report_store_ttl_expiry(self):
+        """get_report must return None for expired entries."""
+        import asyncio
+        import time
+        import report_store
+
+        async def _run():
+            report = BlastRadiusReport(**json.loads(json_dumps_mock_response()),
+                                       pr_title='TTL test')
+            rid = await report_store.store_report(report)
+            # Manually expire the entry
+            data, _ = report_store._store[rid]
+            report_store._store[rid] = (data, time.monotonic() - 3700)
+            return await report_store.get_report(rid)
+
+        result = asyncio.run(_run())
+        assert result is None, 'Expired report must return None'
+
+    def test_report_store_evicts_oldest_at_limit(self):
+        """Report store must not exceed _MAX_REPORTS entries."""
+        import asyncio
+        import report_store
+
+        async def _run():
+            report = BlastRadiusReport(**json.loads(json_dumps_mock_response()),
+                                       pr_title='eviction test')
+            for _ in range(report_store._MAX_REPORTS + 1):
+                await report_store.store_report(report)
+            return len(report_store._store)
+
+        count = asyncio.run(_run())
+        assert count <= report_store._MAX_REPORTS

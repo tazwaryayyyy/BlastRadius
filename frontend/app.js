@@ -17,7 +17,9 @@ const API_BASE = window.location.hostname === 'localhost' || window.location.hos
 
 // ── State ──────────────────────────────────────────────────────────
 let currentReport = null;
+let currentReportId = null;
 let currentDiff = '';
+let activeStream = null;
 
 // ── DOM refs ───────────────────────────────────────────────────────
 const demoBtn = document.getElementById('demo-btn');
@@ -42,8 +44,14 @@ const bobMetrics = document.getElementById('bob-metrics');
 
 // Analysis timing
 let analysisStartTime = null;
-let streamTokenCount = 0;
 let streamSteps = [];
+
+const STAGE_LABELS = {
+  tracing_callers: 'Tracing callers of changed symbols...',
+  building_chains: 'Building upstream call chains...',
+  checking_coverage: 'Checking test coverage...',
+  generating_verdict: 'Computing merge verdict...',
+};
 
 
 // ── Init ───────────────────────────────────────────────────────────
@@ -52,6 +60,20 @@ document.addEventListener('DOMContentLoaded', () => {
 
   demoBtn.addEventListener('click', runDemo);
   analyzeBtn?.addEventListener('click', runCustomAnalysis);
+
+  // Restore saved input mode
+  const savedMode = sessionStorage.getItem('inputMode') || 'url';
+  _applyInputMode(savedMode);
+
+  // Background warmup
+  fetch(`${API_BASE}/api/warmup`).catch(() => { });
+
+  // Deep-link: ?report=UUID
+  const params = new URLSearchParams(window.location.search);
+  const reportId = params.get('report');
+  if (reportId) {
+    loadSharedReport(reportId);
+  }
 });
 
 
@@ -92,7 +114,7 @@ async function runDemo() {
 async function runCustomAnalysis() {
   const diff = diffInput?.value?.trim();
   if (!diff) {
-    alert('Paste a unified diff first.');
+    showWarning(diffInput, 'Paste a unified diff first.');
     return;
   }
 
@@ -102,7 +124,7 @@ async function runCustomAnalysis() {
   clearUI();
   currentDiff = diff;
   DiffViewer.renderDiff('diff-container', diff, []);
-  
+
   if (prTitleEl) prTitleEl.textContent = 'Custom PR';
 
   try {
@@ -116,25 +138,50 @@ async function runCustomAnalysis() {
 
 
 // ── SSE streaming ──────────────────────────────────────────────────
+//
+// BACKEND_REQUIRED:
+//   POST /api/stream/session
+//   Body: { diff: string, repo_path: string, pr_title: string }
+//   Returns: { session_id: string }  (UUID, expires after stream completes or 5 min)
+//
+//   GET /api/stream?session_id=<UUID>
+//   Opens SSE. The session data is server-side; no diff content appears in the URL.
+//
 async function streamAnalysis(diff, repoPath, prTitle) {
-  const params = new URLSearchParams({
-    diff,
-    repo_path: repoPath,
-    pr_title: prTitle ?? '',
-  });
-
   showStreamLog();
 
+  // POST the diff body to get a server-side session token.
+  // The EventSource URL then carries only an opaque UUID, not the diff content.
+  let sessionId;
+  try {
+    const sessionResp = await fetch(`${API_BASE}/api/stream/session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ diff, repo_path: repoPath, pr_title: prTitle ?? '' }),
+    });
+    if (!sessionResp.ok) {
+      throw new Error(`Session creation failed (${sessionResp.status})`);
+    }
+    ({ session_id: sessionId } = await sessionResp.json());
+  } catch (err) {
+    hideStreamLog();
+    throw err;
+  }
+
   return new Promise((resolve, reject) => {
-    const es = new EventSource(`${API_BASE}/api/stream?${params.toString()}`);
+    if (activeStream) {
+      activeStream.close();
+      activeStream = null;
+    }
+    const es = new EventSource(`${API_BASE}/api/stream?session_id=${encodeURIComponent(sessionId)}`);
+    activeStream = es;
+
+    let resolvedReport = null;
 
     es.onmessage = (event) => {
       const data = JSON.parse(event.data);
 
       if (data.type === 'token') {
-        // Append Bob's reasoning token-by-token
-        appendStreamToken(data.content);
-        // Live metrics: tokens processed
         if (streamMetrics && data.token_count) {
           const elapsed = analysisStartTime ? ((Date.now() - analysisStartTime) / 1000).toFixed(1) : '';
           streamMetrics.textContent = `${data.token_count} tokens · ${elapsed}s`;
@@ -142,18 +189,40 @@ async function streamAnalysis(diff, repoPath, prTitle) {
         return;
       }
 
+      if (data.type === 'stage') {
+        const label = STAGE_LABELS[data.stage];
+        if (label) {
+          renderStreamStep(label);
+        } else {
+          console.warn('Unknown stage event from backend:', data.stage);
+        }
+        return;
+      }
+
+      if (data.type === 'result') {
+        resolvedReport = data.report;
+        currentReportId = data.report_id || null;
+        return;
+      }
+
       if (data.type === 'done') {
         es.close();
-        finalizeStreamSteps(data.report);
+        activeStream = null;
         hideStreamLog();
-        renderReport(data.report);
         setLoading(false);
-        resolve(data.report);
+        if (resolvedReport) {
+          finalizeStreamSteps(resolvedReport);
+          renderReport(resolvedReport);
+          resolve(resolvedReport);
+        } else {
+          reject(new Error('No report received'));
+        }
         return;
       }
 
       if (data.type === 'error') {
         es.close();
+        activeStream = null;
         hideStreamLog();
         showError(data.message);
         setLoading(false);
@@ -161,8 +230,9 @@ async function streamAnalysis(diff, repoPath, prTitle) {
       }
     };
 
-    es.onerror = (err) => {
+    es.onerror = () => {
       es.close();
+      activeStream = null;
       hideStreamLog();
       // Fallback to non-streaming POST
       fetchAnalysis(diff, repoPath, prTitle).then(resolve).catch(reject);
@@ -243,6 +313,17 @@ function renderReport(report) {
     currentDiff,
     report.changed_symbols
   );
+
+  // Share bar
+  if (currentReportId) {
+    history.replaceState(null, '', `?report=${currentReportId}`);
+    showShareBar(currentReportId);
+  }
+
+  // Context stats
+  if (report.context_stats) {
+    showContextStats(report.context_stats);
+  }
 }
 
 
@@ -304,11 +385,11 @@ function buildChainCard(chain) {
     <div class="chain-card risk-${chain.risk}" data-chain-id="${chain.id}">
       <div class="chain-risk-badge">${chain.risk}</div>
       <div class="chain-path">${pathHtml}</div>
-      <div class="chain-impact">${chain.business_impact}</div>
+      <div class="chain-impact">${escapeHtml(chain.business_impact)}</div>
       ${confidence}
       ${testHtml}
       ${testFiles}
-      <div class="chain-explanation">${chain.explanation}</div>
+      <div class="chain-explanation">${escapeHtml(chain.explanation)}</div>
     </div>
   `;
 }
@@ -416,12 +497,12 @@ function renderRiskScore(score) {
   riskScoreValue.textContent = String(score);
   riskScoreEl.className = score === 0
     ? 'score-neutral'
-    : score >= 86
-      ? 'score-high'
-      : score >= 61
-        ? 'score-medium'
-        : score >= 31
-          ? 'score-caution'
+    : score >= 75
+      ? 'score-critical'
+      : score >= 55
+        ? 'score-high'
+        : score >= 30
+          ? 'score-moderate'
           : 'score-low';
 }
 
@@ -462,7 +543,6 @@ function clearUI() {
   }
   if (bobMetrics) bobMetrics.style.display = 'none';
   analysisStartTime = null;
-  streamTokenCount = 0;
   streamSteps = [];
   DiffViewer.clearDiff('diff-container');
 }
@@ -470,7 +550,6 @@ function clearUI() {
 
 function showStreamLog() {
   streamLog.classList.add('visible');
-  streamTokenCount = 0;
   streamSteps = [];
   renderStreamStep('Identifying changed symbols...');
 }
@@ -480,16 +559,6 @@ function hideStreamLog() {
   setTimeout(() => streamLog.classList.remove('visible'), 1200);
 }
 
-
-function appendStreamToken(token) {
-  streamTokenCount += token.length;
-
-  if (streamTokenCount >= 80) renderStreamStep('Tracing callers of changed symbols...');
-  if (streamTokenCount >= 180) renderStreamStep('Building upstream chains to entry points...');
-  if (streamTokenCount >= 320) renderStreamStep('Checking test coverage...');
-
-  streamLog.scrollTop = streamLog.scrollHeight;
-}
 
 
 function finalizeStreamSteps(report) {
@@ -528,17 +597,217 @@ function renderStreamStep(message) {
 }
 
 
-function escapeHtml(value) {
-  return String(value)
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+function showError(msg) {
+  detailEmpty.style.display = 'block';
+  detailEmpty.innerHTML = `<span style="color:var(--critical)">Error: ${escapeHtml(msg)}</span>`;
+}
+
+function showWarning(anchorEl, msg) {
+  const existing = anchorEl?.parentElement?.querySelector('.inline-warning');
+  if (existing) existing.remove();
+  const warn = document.createElement('div');
+  warn.className = 'inline-warning';
+  warn.textContent = msg;
+  anchorEl?.insertAdjacentElement('afterend', warn);
+  setTimeout(() => warn.remove(), 3500);
 }
 
 
-function showError(msg) {
-  detailEmpty.style.display = 'block';
-  detailEmpty.innerHTML = `<span style="color:var(--critical)">Error: ${msg}</span>`;
+// ── GitHub URL analysis ────────────────────────────────────────────
+async function streamGithubAnalysis(prUrl) {
+  showStreamLog();
+
+  return new Promise((resolve, reject) => {
+    if (activeStream) {
+      activeStream.close();
+      activeStream = null;
+    }
+
+    let resolvedReport = null;
+
+    fetch(`${API_BASE}/api/analyze/github`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ pr_url: prUrl }),
+    }).then(async (resp) => {
+      if (!resp.ok) {
+        const err = await resp.json().catch(() => ({ detail: resp.statusText }));
+        throw new Error(err.detail ?? `Request failed (${resp.status})`);
+      }
+
+      const reader = resp.body.getReader();
+      const decoder = new TextDecoder();
+      let buf = '';
+
+      const pump = async () => {
+        const { done, value } = await reader.read();
+        if (done) {
+          hideStreamLog();
+          setLoading(false);
+          if (resolvedReport) {
+            finalizeStreamSteps(resolvedReport);
+            renderReport(resolvedReport);
+            resolve(resolvedReport);
+          } else {
+            reject(new Error('No report received'));
+          }
+          return;
+        }
+
+        buf += decoder.decode(value, { stream: true });
+        const parts = buf.split('\n\n');
+        buf = parts.pop() ?? '';
+
+        for (const part of parts) {
+          if (!part.startsWith('data: ')) continue;
+          try {
+            const data = JSON.parse(part.slice(6));
+
+            if (data.type === 'stage') {
+              const label = STAGE_LABELS[data.stage];
+              if (label) renderStreamStep(label);
+            } else if (data.type === 'result') {
+              resolvedReport = data.report;
+              currentReportId = data.report_id || null;
+            } else if (data.type === 'error') {
+              hideStreamLog();
+              showError(data.message);
+              setLoading(false);
+              reject(new Error(data.message));
+              return;
+            }
+          } catch (_) { /* ignore malformed chunks */ }
+        }
+        pump();
+      };
+
+      pump();
+    }).catch((err) => {
+      hideStreamLog();
+      showError(err.message);
+      setLoading(false);
+      reject(err);
+    });
+  });
+}
+
+
+// ── Input mode toggle ──────────────────────────────────────────────
+function toggleInputMode(mode) {
+  _applyInputMode(mode);
+  sessionStorage.setItem('inputMode', mode);
+}
+
+function _applyInputMode(mode) {
+  const urlSection = document.getElementById('url-input-section');
+  const diffSection = document.getElementById('diff-input-section');
+  const urlBtn = document.getElementById('mode-url-btn');
+  const diffBtn = document.getElementById('mode-diff-btn');
+
+  if (mode === 'url') {
+    if (urlSection) urlSection.style.display = 'block';
+    if (diffSection) diffSection.style.display = 'none';
+    if (urlBtn) urlBtn.classList.add('active');
+    if (diffBtn) diffBtn.classList.remove('active');
+  } else {
+    if (urlSection) urlSection.style.display = 'none';
+    if (diffSection) diffSection.style.display = 'block';
+    if (urlBtn) urlBtn.classList.remove('active');
+    if (diffBtn) diffBtn.classList.add('active');
+  }
+}
+
+
+// ── Custom PR modal analysis ───────────────────────────────────────
+// Override runCustomAnalysis to handle both URL and diff modes
+async function runCustomAnalysis() {
+  const mode = sessionStorage.getItem('inputMode') || 'url';
+
+  if (mode === 'url') {
+    const prUrl = document.getElementById('pr-url-input')?.value?.trim();
+    if (!prUrl) {
+      showWarning(document.getElementById('pr-url-input'), 'Enter a GitHub PR URL first.');
+      return;
+    }
+    document.getElementById('custom-modal').style.display = 'none';
+    setLoading(true);
+    clearUI();
+    if (prTitleEl) prTitleEl.textContent = prUrl;
+    analysisStartTime = Date.now();
+    try {
+      await streamGithubAnalysis(prUrl);
+    } catch (err) {
+      showError(err.message);
+      setLoading(false);
+    }
+  } else {
+    const diff = document.getElementById('diff-input')?.value?.trim();
+    if (!diff) {
+      showWarning(document.getElementById('diff-input'), 'Paste a unified diff first.');
+      return;
+    }
+    document.getElementById('custom-modal').style.display = 'none';
+    setLoading(true);
+    clearUI();
+    currentDiff = diff;
+    DiffViewer.renderDiff('diff-container', diff, []);
+    if (prTitleEl) prTitleEl.textContent = 'Custom PR';
+    analysisStartTime = Date.now();
+    try {
+      await streamAnalysis(diff, 'demo_repo', 'Custom PR');
+    } catch (err) {
+      showError(err.message);
+      setLoading(false);
+    }
+  }
+}
+
+
+// ── Share link ─────────────────────────────────────────────────────
+function showShareBar(reportId) {
+  const bar = document.getElementById('share-bar');
+  if (!bar || !reportId) return;
+  bar.style.display = 'flex';
+}
+
+function copyShareLink() {
+  const btn = document.getElementById('copy-link-btn');
+  if (!currentReportId) return;
+  const url = `${window.location.origin}${window.location.pathname}?report=${currentReportId}`;
+  navigator.clipboard.writeText(url).then(() => {
+    if (btn) {
+      btn.textContent = 'Copied!';
+      setTimeout(() => { btn.textContent = 'Copy link'; }, 2000);
+    }
+  }).catch(() => {
+    if (btn) btn.textContent = 'Copy failed';
+  });
+}
+
+
+// ── Context stats ──────────────────────────────────────────────────
+function showContextStats(stats) {
+  const bar = document.getElementById('context-stats-bar');
+  if (!bar || !stats) return;
+  bar.style.display = 'flex';
+  bar.innerHTML = [
+    `<span class="ctx-pill">${stats.files_in_repo} repo files</span>`,
+    `<span class="ctx-pill">${stats.files_sent_to_model} sent to model</span>`,
+    `<span class="ctx-pill">${(stats.chars_sent / 1000).toFixed(0)}k chars</span>`,
+    `<span class="ctx-pill">${stats.budget_used_pct}% budget</span>`,
+  ].join('');
+}
+
+
+// ── Shared report deep-link ────────────────────────────────────────
+async function loadSharedReport(reportId) {
+  try {
+    const resp = await fetch(`${API_BASE}/api/report/${encodeURIComponent(reportId)}`);
+    if (!resp.ok) return;
+    const report = await resp.json();
+    currentReportId = reportId;
+    renderReport(report);
+    showShareBar(reportId);
+    if (prTitleEl && report.pr_title) prTitleEl.textContent = report.pr_title;
+  } catch (_) { /* silently ignore */ }
 }

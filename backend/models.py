@@ -9,6 +9,12 @@ class AnalyzeRequest(BaseModel):
     stream: bool = False
 
 
+class GithubAnalyzeRequest(BaseModel):
+    pr_url: str
+    image_b64: Optional[str] = None
+    mime_type: Optional[str] = None
+
+
 class CallChain(BaseModel):
     id: str
     risk: Literal["CRITICAL", "HIGH", "MEDIUM", "LOW"]
@@ -29,6 +35,20 @@ class RiskSummary(BaseModel):
     LOW: int = 0
 
 
+class RemediationResult(BaseModel):
+    chain_id: str
+    test_file_path: str
+    test_stub: str
+    fix_summary: str
+
+
+class ContextStats(BaseModel):
+    files_in_repo: int
+    files_sent_to_model: int
+    chars_sent: int
+    budget_used_pct: float
+
+
 class BlastRadiusReport(BaseModel):
     changed_symbols: list[str]
     call_chains: list[CallChain]
@@ -37,24 +57,11 @@ class BlastRadiusReport(BaseModel):
     merge_recommendation: str
     suggested_actions: list[str] = Field(default_factory=list)
     pr_title: Optional[str] = None
+    remediations: list[RemediationResult] = Field(default_factory=list)
+    context_stats: Optional[ContextStats] = None
 
 
 class DiffResult(BaseModel):
     changed_files: list[str] = Field(default_factory=list)
     raw_diff: str = ""
     symbols: list[str] = Field(default_factory=list)
-
-
-class GraphNode(BaseModel):
-    id: str
-    label: str
-    risk: str
-    is_changed: bool = False
-    has_tests: bool = True
-    chain_count: int = 0
-
-
-class GraphEdge(BaseModel):
-    source: str
-    target: str
-    risk: str

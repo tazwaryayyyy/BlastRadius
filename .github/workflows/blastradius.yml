@@ -1,0 +1,63 @@
+name: BlastRadius Impact Check
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  blast-radius:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Analyze PR Impact
+        id: blast
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          API_URL: ${{ secrets.BLASTRADIUS_API_URL }}
+        run: |
+          RESPONSE=$(curl -sf -X POST "$API_URL/api/analyze/github" \
+            -H "Content-Type: application/json" \
+            -d "{\"pr_url\": \"$PR_URL\"}" \
+            --max-time 60) || { echo "BlastRadius API unavailable — skipping"; exit 0; }
+          echo "response=$RESPONSE" >> $GITHUB_OUTPUT
+
+      - name: Post Impact Report
+        if: steps.blast.outputs.response != ''
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const r = JSON.parse(`${{ steps.blast.outputs.response }}`);
+            const verdict = r.merge_recommendation || 'UNKNOWN';
+            const emoji = verdict.includes('BLOCK') ? '🚨' : '✅';
+
+            const rows = (r.call_chains || []).map(c =>
+              `| \`${(c.path || [c.chain_id || 'unknown'])[0]}\` | ${c.risk} | ${c.has_tests ? '✅' : '❌'} |`
+            ).join('\n');
+
+            const remediations = (r.remediations || []).map(rem =>
+              `**${rem.chain_id}**: ${rem.fix_summary}\n\`\`\`\n${rem.test_stub}\n\`\`\``
+            ).join('\n\n');
+
+            const reportUrl = r.report_id
+              ? `https://blastradius-rosy.vercel.app/?report=${r.report_id}`
+              : 'https://blastradius-rosy.vercel.app/';
+
+            const body = [
+              `## ${emoji} BlastRadius — ${verdict}`,
+              '',
+              '| Changed Symbol | Risk | Has Tests |',
+              '|----------------|------|-----------|',
+              rows || '| (none) | — | — |',
+              '',
+              remediations ? '### 🛠 Auto-generated Remediations' : '',
+              remediations || '',
+              '',
+              `[View full impact graph](${reportUrl})`,
+            ].filter(line => line !== undefined).join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              body,
+            });
