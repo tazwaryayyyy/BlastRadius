@@ -1195,11 +1195,22 @@ button:focus-visible {
   outline: none;
   transition: border-color .15s;
 }
-#pr-url-input:focus { border-color: var(--accent); }
+
+#pr-url-input:focus {
+  border-color: var(--accent);
+}
 
 /* -- Input mode toggle -- */
-.mode-toggle { opacity: .65; }
-.mode-toggle.active { opacity: 1; background: var(--accent); color: #000; border-color: var(--accent); }
+.mode-toggle {
+  opacity: .65;
+}
+
+.mode-toggle.active {
+  opacity: 1;
+  background: var(--accent);
+  color: #000;
+  border-color: var(--accent);
+}
 
 /* -- Share bar -- */
 #share-bar {
@@ -1210,6 +1221,7 @@ button:focus-visible {
   font-size: 11px;
   color: var(--text-3);
 }
+
 .share-btn {
   font-size: 11px;
   padding: 3px 10px;
@@ -1219,7 +1231,11 @@ button:focus-visible {
   color: var(--text-1);
   cursor: pointer;
 }
-.share-btn:hover { border-color: var(--accent); color: var(--accent); }
+
+.share-btn:hover {
+  border-color: var(--accent);
+  color: var(--accent);
+}
 
 /* -- Context stats -- */
 .context-stats {
@@ -1229,6 +1245,7 @@ button:focus-visible {
   padding: 6px 14px;
   font-size: 10px;
 }
+
 .ctx-pill {
   background: var(--bg-2);
   border: 1px solid var(--border);
@@ -1239,4 +1256,7 @@ button:focus-visible {
 }
 
 /* -- Gemini badge -- */
-.gemini-badge { background: linear-gradient(135deg, #4285f4, #0f9d58) !important; border: none !important; }
+.gemini-badge {
+  background: linear-gradient(135deg, #4285f4, #0f9d58) !important;
+  border: none !important;
+}
