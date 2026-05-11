@@ -62,7 +62,8 @@ class RemediationAgent:
                 calculation_basis=(
                     f"Based on {critical_uncovered_count} critical uncovered path(s). "
                     f"DORA 2023: median restore time {INCIDENT_RESTORE_HOURS}h "
-                    f"at ${COST_PER_HOUR}/hr engineering cost."
+                    f"at ${COST_PER_HOUR}/hr engineering cost. "
+                    f"Estimate based on industry medians — your actual figures may vary."
                 ),
             )
             report_dict["cost_estimate"] = cost_estimate.model_dump()

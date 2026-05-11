@@ -7,5 +7,31 @@
     "user_request": "Review this prompt for a call chain tracing task. What improvements would you suggest to reduce hallucination in the impact analysis?",
     "bob_contribution": "Suggested 4 improvements: clarify task instructions with ### headers, provide more specific language (business logic vs business impact), add examples to the output schema, and add guidance for handling ambiguous cases. Bob provided a complete rewritten TASK_BLOCK with ### step headers implemented.",
     "implemented": true,
-    "commit_reference": "0ed20f1"
+    "commit_reference": "0ed20f1",
+    "request": {
+        "model_id": "meta-llama/llama-3-3-70b-instruct",
+        "project_id": "bce5cc58-77fd-49c2-abe1-96a35aad0054",
+        "messages": [
+            {
+                "role": "user",
+                "content": "I'm building a PR impact analyser that traces call chains across a repository. Below is the TASK section of my prompt. Review it for hallucination risk — places where the model might invent impact paths that don't exist, or miss real ones. Suggest specific rewrites.\n\n```\nYOUR TASK\nAnalyse the PR diff and repository files above.\n1. Identify all changed symbols.\n2. Trace every call chain from those symbols into the rest of the codebase.\n3. For each chain, assess business impact and test coverage.\n4. Produce a merge recommendation: BLOCK MERGE or PROCEED WITH CAUTION.\nReturn valid JSON only.\n```\n\nWhat four things would you change to reduce hallucination?"
+            }
+        ],
+        "parameters": {
+            "temperature": 0.2,
+            "max_new_tokens": 800
+        }
+    },
+    "response": {
+        "model_id": "meta-llama/llama-3-3-70b-instruct",
+        "created_at": "2026-05-08T11:03:44.221Z",
+        "results": [
+            {
+                "generated_text": "Here are four targeted changes that will reduce hallucination in your call-chain tracing prompt:\n\n**1. Add ### step headers with explicit scope constraints**\nYour current steps are unnumbered prose. Models tend to over-generalise when steps are not bounded. Change to:\n```\n### STEP 1 — Identify changed symbols\nList only symbols that appear on a +/- line in the diff. Do not infer intent.\n### STEP 2 — Trace direct call chains\nTrace only call relationships that are evidenced in the REPOSITORY FILES above. Do not extrapolate to files not shown.\n```\nThe phrase \"Do not extrapolate to files not shown\" is critical — without it the model will invent plausible-sounding paths into files it hasn't seen.\n\n**2. Replace \"business impact\" with \"specific business logic\"**\n\"Business impact\" is vague and invites confident-sounding fabrications. Change to: \"describe the specific business logic in this file that will be affected if this symbol changes behaviour.\" This grounds the answer in what is actually present in the file.\n\n**3. Add a confidence field with an explicit UNVERIFIABLE option**\nWithout a sanctioned \"I don't know\" path, models fill gaps with plausible guesses. Add to your JSON schema:\n```json\n\"confidence\": \"HIGH | MEDIUM | LOW\",\n\"confidence_reason\": \"one sentence explaining the evidence for this confidence level\"\n```\nThen instruct: \"If you cannot find a direct call in the provided files, set confidence to LOW and explain what you could not verify.\"\n\n**4. End with a grounding instruction**\nAdd a final line: \"Every call chain you report must be traceable to a specific line in the REPOSITORY FILES section above. If you cannot cite a file and approximate line, omit the chain.\" This is the single highest-value hallucination guard for retrieval-grounded tasks.",
+                "generated_token_count": 387,
+                "input_token_count": 201,
+                "stop_reason": "eos_token"
+            }
+        ]
+    }
 }
