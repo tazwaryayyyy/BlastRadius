@@ -7,7 +7,7 @@
     "user_request": "Add support for detecting TypeScript interface changes (interface keyword, type aliases with =) as named symbols alongside the existing function/class detection.",
     "bob_contribution": "Added two regex patterns to SYMBOL_PATTERNS: r'^[+-].*\\binterface\\s+(\\w+)' for interface declarations and r'^[+-].*\\btype\\s+(\\w+)\\s*=\\s*' for type aliases. Also fixed group index handling for multi-group patterns.",
     "implemented": true,
-    "commit_reference": "0ed20f1",
+    "commit_reference": "adba234",
     "request": {
         "model_id": "meta-llama/llama-3-3-70b-instruct",
         "project_id": "bce5cc58-77fd-49c2-abe1-96a35aad0054",
