@@ -536,6 +536,7 @@ body::after {
 
 #graph-canvas {
   flex: 1;
+  min-height: 400px;
   overflow: hidden;
   position: relative
 }

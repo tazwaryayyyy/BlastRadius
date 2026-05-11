@@ -44,11 +44,12 @@ function initGraph(containerId, onNodeClick) {
   if (!container) return;
 
   const { width, height } = container.getBoundingClientRect();
+  const initH = height || 400;  // guard against 0-height at DOMContentLoaded
 
   svg = d3.select(`#${containerId}`)
     .append('svg')
     .attr('width', width)
-    .attr('height', height);
+    .attr('height', initH);
 
   // Defs for filters
   const defs = svg.append('defs');
@@ -158,8 +159,12 @@ function buildGraphData(report) {
 function renderGraph(report) {
   if (!svg) return;
   const container = svg.node().parentElement;
-  const W = container.clientWidth;
-  const H = container.clientHeight;
+  const W = container.clientWidth || 600;
+  const H = container.clientHeight || 400;
+
+  // Ensure SVG viewport matches current container dimensions
+  // (guards against initGraph running before CSS layout settled)
+  svg.attr('width', W).attr('height', H);
 
   // Clear previous render
   svg.selectAll('*:not(defs)').remove();
@@ -251,12 +256,12 @@ function renderGraph(report) {
   // Tick
   simulation.on('tick', () => {
     link
-      .attr('x1', (d) => d.source.x)
-      .attr('y1', (d) => d.source.y)
-      .attr('x2', (d) => d.target.x)
-      .attr('y2', (d) => d.target.y);
+      .attr('x1', (d) => isNaN(d.source.x) ? 0 : d.source.x)
+      .attr('y1', (d) => isNaN(d.source.y) ? 0 : d.source.y)
+      .attr('x2', (d) => isNaN(d.target.x) ? 0 : d.target.x)
+      .attr('y2', (d) => isNaN(d.target.y) ? 0 : d.target.y);
 
-    node.attr('transform', (d) => `translate(${d.x},${d.y})`);
+    node.attr('transform', (d) => `translate(${isNaN(d.x) ? 0 : d.x},${isNaN(d.y) ? 0 : d.y})`);
   });
 }
 

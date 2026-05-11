@@ -18,8 +18,11 @@ logger = logging.getLogger(__name__)
 
 # ── Primary: IBM Bob ───────────────────────────────────────────────
 BOB_API_KEY = os.getenv("BOB_API_KEY", "")
-BOB_API_URL = os.getenv("BOB_API_URL", "")
-BOB_MODEL = os.getenv("BOB_MODEL", "ibm/granite-3-3-8b-instruct")
+BOB_API_URL = os.getenv(
+    "BOB_API_URL",
+    "https://jp-tok.ml.cloud.ibm.com/ml/v1/text/chat?version=2024-05-13",
+)
+BOB_MODEL = os.getenv("BOB_MODEL", "meta-llama/llama-3-3-70b-instruct")
 BOB_PROJECT_ID = os.getenv("BOB_PROJECT_ID", "")
 # ── Fallback: any OpenAI-compatible endpoint ───────────────────────
 BOB_FALLBACK_API_KEY = os.getenv("BOB_FALLBACK_API_KEY", "")
@@ -90,11 +93,13 @@ async def call_bob(
         "Content-Type": "application/json",
     }
     payload = {
-        "model": BOB_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
-        "temperature": temperature,
-        "max_tokens": max_tokens,
+        "model_id": BOB_MODEL,
         "project_id": BOB_PROJECT_ID,
+        "messages": [{"role": "user", "content": prompt}],
+        "parameters": {
+            "temperature": temperature,
+            "max_new_tokens": max_tokens,
+        },
     }
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:
@@ -119,7 +124,13 @@ async def call_bob(
                 resp.raise_for_status()
                 data = resp.json()
                 try:
-                    return data["choices"][0]["message"]["content"]
+                    if "results" in data:
+                        return data["results"][0]["generated_text"]
+                    elif "choices" in data:
+                        return data["choices"][0]["message"]["content"]
+                    else:
+                        raise ValueError(
+                            f"Unrecognized response shape: {list(data.keys())}")
                 except (KeyError, IndexError) as exc:
                     logger.error("Unexpected Bob response shape: %s", data)
                     raise ValueError("Bob call failed") from exc
