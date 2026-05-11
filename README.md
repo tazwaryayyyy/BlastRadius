@@ -129,6 +129,22 @@ cd frontend && npx serve .
 
 ---
 
+## Real-World Case Study
+
+**Express.js [PR #5570](https://github.com/expressjs/express/pull/5570)** — a change to `router/layer.js` that modified how path parameters are decoded. The function `Layer.prototype.match` was changed to call `decodeURIComponent` without a try/catch guard.
+
+BlastRadius traced the call chain:
+
+```
+router/layer.js → router/index.js → application.js → http.IncomingMessage
+```
+
+Verdict: **🚨 BLOCK** — `Layer.prototype.match` is called on every incoming request. No test covered the `decodeURIComponent` throw path. Three weeks after the PR merged, a `%` in a URL path caused unhandled exceptions in production for several downstream users. A `try/catch` fix was shipped in a follow-up.
+
+BlastRadius would have flagged this before merge — the uncovered CRITICAL path and missing test stub were exactly the failure that shipped. [View the pre-generated report →](https://blastradius-rosy.vercel.app/?report=4ceba495-0714-44ca-8e8a-14e8fcb17995)
+
+---
+
 ## IBM Bob Session Log
 
 BlastRadius was built using IBM Bob (watsonx.ai) across 5 documented 
