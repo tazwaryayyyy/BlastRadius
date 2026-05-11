@@ -8,6 +8,8 @@ SYMBOL_PATTERNS = [
     r'^[+-].*\bclass\s+(\w+)',
     r'^[+-].*\bdef\s+(\w+)',
     r'^[+-].*\basync\s+function\s+(\w+)',
+    r'^[+-].*\binterface\s+(\w+)',        # TypeScript interface declaration
+    r'^[+-].*\btype\s+(\w+)\s*=\s*',     # TypeScript type alias
     r'^[+-].*\bmodule\.exports\s*=\s*\{([^}]+)\}',
 ]
 

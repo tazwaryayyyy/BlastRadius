@@ -120,6 +120,11 @@ class TestDiffParser:
         assert result.changed_files == []
         assert result.symbols == []
 
+    def test_whitespace_only_diff(self):
+        result = parse_diff("   \n\t  ")
+        assert result.changed_files == []
+        assert result.symbols == []
+
 
 # ── repo_loader tests ──────────────────────────────────────────────
 
@@ -179,6 +184,10 @@ class TestRepoLoader:
             files, diff.changed_files, diff.symbols)
         total = sum(len(c) for c in bundle.values())
         assert total <= 90_000, f"Bundle exceeds 90k char limit: {total}"
+
+    def test_non_existent_repo_raises(self):
+        with pytest.raises((FileNotFoundError, OSError)):
+            load_repo("/tmp/definitely_does_not_exist_blastradius")
 
 
 # ── prompt_builder tests ───────────────────────────────────────────
@@ -244,6 +253,13 @@ class TestPromptBuilder:
         assert payments_pos != -1, "payments.js not found in FILES section"
         assert rl_pos < payments_pos, \
             "rate_limiter.js (changed file) should appear before payments.js in the FILES section"
+
+    def test_user_prompt_with_empty_files(self):
+        diff = parse_diff(_load_demo_diff())
+        user = build_user_prompt({}, diff)
+        # Should not crash and must still contain the diff and task instructions
+        assert "PR DIFF" in user
+        assert "YOUR TASK" in user
 
 
 # ── models tests ───────────────────────────────────────────────────
