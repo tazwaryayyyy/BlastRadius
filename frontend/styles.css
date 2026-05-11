@@ -1256,9 +1256,9 @@ button:focus-visible {
   font-family: var(--mono);
 }
 
-/* -- Gemini badge -- */
-.gemini-badge {
-  background: linear-gradient(135deg, #4285f4, #0f9d58) !important;
+/* -- IBM Bob badge -- */
+.bob-badge {
+  background: linear-gradient(135deg, #054ADA, #0062ff) !important;
   border: none !important;
 }
 

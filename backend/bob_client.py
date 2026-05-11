@@ -156,6 +156,12 @@ async def _call_fallback(
     if not BOB_FALLBACK_API_KEY or not BOB_FALLBACK_URL:
         raise ValueError("Analysis service unavailable.")
 
+    logger.warning(
+        "\u26a0\ufe0f  IBM Bob unavailable — analysis running on FALLBACK endpoint (%s). "
+        "Set BOB_API_KEY and BOB_API_URL to use Bob.",
+        BOB_FALLBACK_URL,
+    )
+
     url = f"{BOB_FALLBACK_URL}/chat/completions"
     headers = {
         "Authorization": f"Bearer {BOB_FALLBACK_API_KEY}",
