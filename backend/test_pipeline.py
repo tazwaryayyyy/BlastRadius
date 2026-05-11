@@ -358,20 +358,20 @@ class TestFullPipeline:
         assert low[0].has_tests is True
 
 
-# ── Gemini client tests ────────────────────────────────────────────
+# ── Bob client tests ─────────────────────────────────────────────
 
 class TestGeminiClient:
     """
-    Verifies gemini_client retry behaviour and TraceAgent round-trip
+    Verifies bob_client retry behaviour and TraceAgent round-trip
     without any live API calls.
     """
 
-    def _mock_gemini_response(self, content: str):
+    def _mock_bob_response(self, content: str):
         from unittest.mock import AsyncMock, MagicMock
         resp = MagicMock()
         resp.status_code = 200
         resp.json.return_value = {
-            "candidates": [{"content": {"parts": [{"text": content}]}}]
+            "choices": [{"message": {"content": content}}]
         }
         resp.raise_for_status = MagicMock()
         return resp
@@ -380,7 +380,7 @@ class TestGeminiClient:
         """429 on first attempt, 200 on second — client must retry and return content."""
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
-        import gemini_client
+        import bob_client
 
         call_count = 0
 
@@ -393,28 +393,28 @@ class TestGeminiClient:
                 resp.json.return_value = {}
                 resp.raise_for_status = MagicMock()
                 return resp
-            return self._mock_gemini_response(json_dumps_mock_response())
+            return self._mock_bob_response(json_dumps_mock_response())
 
         with patch("httpx.AsyncClient.post", new=fake_post), \
-                patch.object(gemini_client, "GEMINI_API_KEY", "test-key"), \
+                patch.object(bob_client, "BOB_API_KEY", "test-key"), \
                 patch("asyncio.sleep", new=AsyncMock()):
-            result = asyncio.run(gemini_client.call_gemini("test prompt"))
+            result = asyncio.run(bob_client.call_bob("test prompt"))
 
         assert "call_chains" in result
         assert call_count == 2
 
     def test_gemini_client_returns_parseable_json(self):
-        """call_gemini must return a string parseable by json.loads when Gemini responds."""
+        """call_bob must return a string parseable by json.loads when Bob responds."""
         import asyncio
         from unittest.mock import MagicMock, patch
-        import gemini_client
+        import bob_client
 
         async def fake_post(self_client, url, json=None, **kwargs):
-            return self._mock_gemini_response(json_dumps_mock_response())
+            return self._mock_bob_response(json_dumps_mock_response())
 
         with patch("httpx.AsyncClient.post", new=fake_post), \
-                patch.object(gemini_client, "GEMINI_API_KEY", "test-key"):
-            raw = asyncio.run(gemini_client.call_gemini("test prompt"))
+                patch.object(bob_client, "BOB_API_KEY", "test-key"):
+            raw = asyncio.run(bob_client.call_bob("test prompt"))
 
         data = json.loads(raw)
         assert "call_chains" in data
@@ -522,7 +522,7 @@ class TestAgentPipeline:
         async def fake_call_gemini(prompt, **kwargs):
             return json_dumps_mock_response()
 
-        with patch('trace_agent.call_gemini', new=AsyncMock(side_effect=fake_call_gemini)):
+        with patch('trace_agent.call_bob', new=AsyncMock(side_effect=fake_call_gemini)):
             diff = parse_diff(_load_demo_diff())
             result = asyncio.run(TraceAgent({}).run(diff))
 
@@ -543,9 +543,9 @@ class TestAgentPipeline:
             ],
         }
 
-        with patch('gemini_client.call_gemini', new=AsyncMock()) as mock_gemini:
+        with patch('bob_client.call_bob', new=AsyncMock()) as mock_bob:
             result = asyncio.run(RemediationAgent().run(report_dict, {}))
-            mock_gemini.assert_not_called()
+            mock_bob.assert_not_called()
 
         assert result['remediations'] == []
 
@@ -573,7 +573,7 @@ class TestAgentPipeline:
             ],
         }
 
-        with patch('remediation_agent.call_gemini', new=AsyncMock(return_value=rem_json)):
+        with patch('remediation_agent.call_bob', new=AsyncMock(return_value=rem_json)):
             result = asyncio.run(RemediationAgent().run(report_dict, {}))
 
         assert len(result['remediations']) == 1

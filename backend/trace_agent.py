@@ -4,7 +4,7 @@ import os
 from typing import Callable
 
 from ast_verifier import verify_call
-from gemini_client import GEMINI_PRO, _clean_json, call_gemini, call_gemini_multimodal
+from bob_client import call_bob, call_bob_multimodal, _clean_json
 from models import DiffResult
 from prompt_builder import build_system_prompt, build_user_prompt
 
@@ -40,9 +40,9 @@ class TraceAgent:
 
         _cb("building_chains")
         if image_b64 and mime_type:
-            raw = await call_gemini_multimodal(full_prompt, image_b64, mime_type)
+            raw = await call_bob_multimodal(full_prompt, image_b64, mime_type)
         else:
-            raw = await call_gemini(full_prompt, model=GEMINI_PRO)
+            raw = await call_bob(full_prompt)
 
         _cb("checking_coverage")
         report_dict = json.loads(_clean_json(raw))

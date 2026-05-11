@@ -2,7 +2,7 @@ import json
 import logging
 from typing import Callable
 
-from gemini_client import GEMINI_FLASH, _clean_json, call_gemini
+from bob_client import call_bob, _clean_json
 from models import CostEstimate, RemediationResult
 
 logger = logging.getLogger(__name__)
@@ -36,7 +36,7 @@ class RemediationAgent:
         for chain in critical_uncovered:
             prompt = _build_prompt(chain, repo_context)
             try:
-                raw = await call_gemini(prompt, model=GEMINI_FLASH)
+                raw = await call_bob(prompt)
                 data = json.loads(_clean_json(raw))
                 remediations.append(RemediationResult(**data).model_dump())
             except Exception as exc:
