@@ -1240,20 +1240,27 @@ button:focus-visible {
 
 /* -- Context stats -- */
 .context-stats {
-  display: flex;
-  gap: 6px;
-  flex-wrap: wrap;
-  padding: 6px 14px;
-  font-size: 10px;
+  padding: 6px 14px 4px;
+  font-size: 10.5px;
+  line-height: 1.6;
 }
 
-.ctx-pill {
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 2px 8px;
-  color: var(--text-3);
+.ctx-summary {
+  display: block;
+  color: var(--text-2);
   font-family: var(--mono);
+}
+
+.ctx-summary strong {
+  color: var(--text-1);
+}
+
+.ctx-warning {
+  display: block;
+  margin-top: 2px;
+  color: #c68a00;
+  font-family: var(--mono);
+  font-size: 10px;
 }
 
 /* -- IBM Bob badge -- */

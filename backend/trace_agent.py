@@ -40,12 +40,13 @@ class TraceAgent:
 
         _cb("building_chains")
         if image_b64 and mime_type:
-            raw = await call_bob_multimodal(full_prompt, image_b64, mime_type)
+            raw, token_count = await call_bob_multimodal(full_prompt, image_b64, mime_type)
         else:
-            raw = await call_bob(full_prompt)
+            raw, token_count = await call_bob(full_prompt)
 
         _cb("checking_coverage")
         report_dict = json.loads(_clean_json(raw))
+        report_dict["_trace_tokens"] = token_count
 
         # ── AST verification: badge each call chain edge ──────────────
         for chain in report_dict.get("call_chains", []):

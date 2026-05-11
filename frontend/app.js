@@ -882,13 +882,20 @@ function copyShareLink() {
 function showContextStats(stats) {
   const bar = document.getElementById('context-stats-bar');
   if (!bar || !stats) return;
-  bar.style.display = 'flex';
-  bar.innerHTML = [
-    `<span class="ctx-pill">${stats.files_in_repo} repo files</span>`,
-    `<span class="ctx-pill">${stats.files_sent_to_model} sent to model</span>`,
-    `<span class="ctx-pill">${(stats.chars_sent / 1000).toFixed(0)}k chars</span>`,
-    `<span class="ctx-pill">${stats.budget_used_pct}% budget</span>`,
-  ].join('');
+  bar.style.display = 'block';
+
+  const sent = stats.files_sent_to_model;
+  const total = stats.files_in_repo;
+  const omitted = total - sent;
+  const kb = Math.round(stats.chars_sent / 1024);
+
+  let html = `<span class="ctx-summary">Bob analyzed <strong>${sent}</strong> of <strong>${total}</strong> repo files (priority-ranked by blast radius · ${kb} KB sent)</span>`;
+
+  if (omitted > 0) {
+    html += `<span class="ctx-warning">&#9888; ${omitted} lower-priority ${omitted === 1 ? 'file' : 'files'} omitted — call chains in those files may be incomplete</span>`;
+  }
+
+  bar.innerHTML = html;
 }
 
 

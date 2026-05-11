@@ -76,7 +76,7 @@ async def call_bob(
     prompt: str,
     temperature: float = 0.0,
     max_tokens: int = 8192,
-) -> str:
+) -> tuple[str, int]:
     """Call the IBM Bob API (OpenAI-compatible chat completions).
 
     Retries up to _MAX_RETRIES times on 429. Falls back to the secondary
@@ -125,9 +125,15 @@ async def call_bob(
                 data = resp.json()
                 try:
                     if "results" in data:
-                        return data["results"][0]["generated_text"]
+                        text = data["results"][0]["generated_text"]
+                        tokens = int(data["results"][0].get(
+                            "generated_token_count", 0))
+                        return text, tokens
                     elif "choices" in data:
-                        return data["choices"][0]["message"]["content"]
+                        text = data["choices"][0]["message"]["content"]
+                        tokens = int(data.get("usage", {}).get(
+                            "completion_tokens", 0))
+                        return text, tokens
                     else:
                         raise ValueError(
                             f"Unrecognized response shape: {list(data.keys())}")
@@ -151,7 +157,7 @@ async def _call_fallback(
     prompt: str,
     temperature: float,
     max_tokens: int,
-) -> str:
+) -> tuple[str, int]:
     """Secondary OpenAI-compatible endpoint, used when Bob is unavailable."""
     if not BOB_FALLBACK_API_KEY or not BOB_FALLBACK_URL:
         raise ValueError("Analysis service unavailable.")
@@ -179,7 +185,9 @@ async def _call_fallback(
             resp = await client.post(url, headers=headers, json=payload)
             resp.raise_for_status()
             data = resp.json()
-            return data["choices"][0]["message"]["content"]
+            text = data["choices"][0]["message"]["content"]
+            tokens = int(data.get("usage", {}).get("completion_tokens", 0))
+            return text, tokens
         except Exception as exc:
             logger.error("Fallback also failed: %s", exc)
             raise ValueError("Analysis service unavailable.") from exc
@@ -189,7 +197,7 @@ async def call_bob_multimodal(
     text_prompt: str,
     image_b64: str,
     mime_type: str,
-) -> str:
+) -> tuple[str, int]:
     """IBM Bob does not support multimodal natively.
 
     Strips the image, logs a warning, and forwards the text prompt only with

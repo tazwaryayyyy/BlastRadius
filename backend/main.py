@@ -34,7 +34,7 @@ from models import AnalyzeRequest, BlastRadiusReport, GithubAnalyzeRequest, Risk
 from prompt_builder import build_system_prompt, build_user_prompt
 from remediation_agent import RemediationAgent
 from report_store import get_report, save_static_report, store_report
-from repo_loader import load_repo
+from repo_loader import get_context_bundle, load_repo
 from trace_agent import TraceAgent
 
 logging.basicConfig(level=logging.INFO,
@@ -146,6 +146,12 @@ async def _analysis_event_gen(
             yield f"data: {json.dumps({'type': 'error', 'message': 'Could not extract changed files from diff.'})}\n\n"
             return
 
+        # Compute context stats for local-repo flows (demo / stream) that don't supply them
+        if context_stats is None:
+            _, context_stats = get_context_bundle(
+                all_files, diff_result.changed_files, diff_result.symbols
+            )
+
         trace = TraceAgent(all_files)
         trace_task = asyncio.create_task(
             trace.run(diff_result, image_b64=image_b64, mime_type=mime_type,
@@ -159,8 +165,9 @@ async def _analysis_event_gen(
             yield q.get_nowait()
         report_dict = await trace_task
 
-        # Emit token count after TraceAgent so judges see Bob reasoning metrics live
-        yield f"data: {json.dumps({'type': 'token', 'token_count': '~4k', 'stage': 'trace'})}\n\n"
+        # Emit real token count from Bob response after TraceAgent
+        trace_tokens = report_dict.pop("_trace_tokens", 0)
+        yield f"data: {json.dumps({'type': 'token', 'token_count': trace_tokens, 'stage': 'trace'})}\n\n"
 
         rem_task = asyncio.create_task(
             RemediationAgent().run(report_dict, all_files,
@@ -174,8 +181,9 @@ async def _analysis_event_gen(
             yield q.get_nowait()
         report_dict = await rem_task
 
-        # Emit token count after RemediationAgent
-        yield f"data: {json.dumps({'type': 'token', 'token_count': '~2k', 'stage': 'remediation'})}\n\n"
+        # Emit real token count from Bob response after RemediationAgent
+        rem_tokens = report_dict.pop("_remediation_tokens", 0)
+        yield f"data: {json.dumps({'type': 'token', 'token_count': rem_tokens, 'stage': 'remediation'})}\n\n"
 
         if context_stats:
             report_dict["context_stats"] = context_stats.model_dump()

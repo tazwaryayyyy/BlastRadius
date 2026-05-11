@@ -33,10 +33,12 @@ class RemediationAgent:
         ]
 
         remediations: list[dict] = []
+        remediation_tokens = 0
         for chain in critical_uncovered:
             prompt = _build_prompt(chain, repo_context)
             try:
-                raw = await call_bob(prompt)
+                raw, tokens = await call_bob(prompt)
+                remediation_tokens += tokens
                 data = json.loads(_clean_json(raw))
                 remediations.append(RemediationResult(**data).model_dump())
             except Exception as exc:
@@ -44,6 +46,7 @@ class RemediationAgent:
                     "RemediationAgent skipping chain %s: %s", chain.get("id"), exc)
 
         report_dict["remediations"] = remediations
+        report_dict["_remediation_tokens"] = remediation_tokens
 
         # ── Cost estimate (only when verdict is BLOCK) ─────────────────
         if report_dict.get("merge_recommendation", "").upper().find("BLOCK") != -1:

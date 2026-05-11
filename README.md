@@ -4,7 +4,7 @@
 > Half that time is engineers asking "what does this break?"  
 > **BlastRadius answers in 30 seconds.**
 
-Paste a GitHub PR URL. Two autonomous AI agents trace every call chain across the repository, identify uncovered critical paths, generate missing test stubs, and issue a BLOCK or PROCEED verdict — before you merge.
+Paste a GitHub PR URL. A structured two-stage reasoning pipeline powered by IBM Bob traces every call chain across the repository, identifies uncovered critical paths, generates missing test stubs, and issues a BLOCK or PROCEED verdict — before you merge.
 
 [![Live Demo](https://img.shields.io/badge/Live_Demo-blastradius.vercel.app-0070f3?style=for-the-badge&logo=vercel&logoColor=white)](https://blastradius-rosy.vercel.app)
 [![GitHub Actions](https://img.shields.io/badge/GitHub_Actions-enabled-2088FF?style=for-the-badge&logo=github-actions&logoColor=white)](https://github.com/tazwaryayyyy/BlastRadius/blob/main/.github/workflows/blastradius.yml)
@@ -66,6 +66,8 @@ BlastRadius runs a **structured two-stage reasoning pipeline** powered entirely 
 - **Stage 2 — RemediationAgent:** Bob's TraceAgent output feeds directly into a second focused Bob call. For every CRITICAL uncovered path, Bob generates a complete, runnable test stub with a one-line fix summary. On a BLOCK verdict, a cost estimate (based on DORA 2023 medians) surfaces the business risk.
 
 Both stages use `BOB_PROJECT_ID`-scoped watsonx.ai inference. Context is prioritised (changed files first, then their importers) so Bob reasons over the most relevant code even for large repos.
+
+> **How repo context works:** BlastRadius uses Bob's inference API — it does not rely on any native "repo awareness" feature in watsonx.ai. Before each Bob call, files are priority-ranked (changed files → their importers → test files → everything else), trimmed to fit the model's context budget, and injected into a structured prompt. For large repos where not all files fit, the UI shows exactly how many files Bob saw — e.g. *"Bob analyzed 47 of 312 repo files (priority-ranked)"* — so the scope of the analysis is always transparent.
 
 ---
 
