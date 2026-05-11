@@ -18,7 +18,7 @@ HOURS_SAVED_PER_STUB = 1.6  # time to manually write + debug a test
 class RemediationAgent:
     """
     Generates test stubs and fix recommendations for uncovered critical paths.
-    Operates on TraceAgent output. Uses Gemini Flash for speed.
+    Operates on TraceAgent output. Uses IBM Bob (watsonx.ai).
     """
 
     async def run(

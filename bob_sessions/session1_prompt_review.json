@@ -1,11 +1,11 @@
 {
-  "session_name": "Prompt Engineering Review",
-  "model": "meta-llama/llama-3-3-70b-instruct",
-  "project_id": "bce5cc58-77fd-49c2-abe1-96a35aad0054",
-  "endpoint": "https://jp-tok.ml.cloud.ibm.com/ml/v1/text/chat?version=2023-05-29",
-  "file_reviewed": "backend/prompt_builder.py",
-  "user_request": "Review this prompt for a call chain tracing task. What improvements would you suggest to reduce hallucination in the impact analysis?",
-  "bob_contribution": "Suggested 4 improvements: clarify task instructions with ### headers, provide more specific language (business logic vs business impact), add examples to the output schema, and add guidance for handling ambiguous cases. Bob provided a complete rewritten TASK_BLOCK with ### step headers implemented.",
-  "implemented": true,
-  "commit_reference": "0ed20f1"
+    "session_name": "Prompt Engineering Review",
+    "model": "meta-llama/llama-3-3-70b-instruct",
+    "project_id": "bce5cc58-77fd-49c2-abe1-96a35aad0054",
+    "endpoint": "https://jp-tok.ml.cloud.ibm.com/ml/v1/text/chat?version=2023-05-29",
+    "file_reviewed": "backend/prompt_builder.py",
+    "user_request": "Review this prompt for a call chain tracing task. What improvements would you suggest to reduce hallucination in the impact analysis?",
+    "bob_contribution": "Suggested 4 improvements: clarify task instructions with ### headers, provide more specific language (business logic vs business impact), add examples to the output schema, and add guidance for handling ambiguous cases. Bob provided a complete rewritten TASK_BLOCK with ### step headers implemented.",
+    "implemented": true,
+    "commit_reference": "0ed20f1"
 }

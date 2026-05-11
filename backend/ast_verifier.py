@@ -4,7 +4,7 @@ Static call-site verification for BlastRadius.
 
 Given the source of a caller file and the name of a callee symbol, returns:
   VERIFIED       — AST/regex confirms the callee is directly invoked in the caller
-  INFERRED       — No direct call found; the relationship was inferred by Gemini
+  INFERRED       — No direct call found; the relationship was inferred by Bob (LLM)
   UNVERIFIABLE   — Cannot parse the source (syntax error) or extension unsupported
 """
 

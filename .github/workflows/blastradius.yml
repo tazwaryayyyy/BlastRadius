@@ -7,7 +7,7 @@ on:
 jobs:
   blast-radius:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - name: Analyze PR Impact
         id: blast
@@ -15,7 +15,7 @@ jobs:
           PR_URL: ${{ github.event.pull_request.html_url }}
           API_URL: ${{ secrets.BLASTRADIUS_API_URL }}
         run: |
-          RESPONSE=$(curl -sf -X POST "$API_URL/api/analyze/github" \
+          RESPONSE=$(curl -sf --retry 3 --retry-delay 10 -X POST "$API_URL/api/analyze/github" \
             -H "Content-Type: application/json" \
             -d "{\"pr_url\": \"$PR_URL\"}" \
             --max-time 60) || { echo "BlastRadius API unavailable — skipping"; exit 0; }

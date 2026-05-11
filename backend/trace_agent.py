@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class TraceAgent:
     """
     Traces call chains across a repository to map PR blast radius.
-    Uses Gemini Pro for multi-hop reasoning over repo context.
+    Uses IBM Bob (watsonx.ai) for multi-hop reasoning over repo context.
     """
 
     def __init__(self, repo_context: dict[str, str]):
@@ -34,8 +34,8 @@ class TraceAgent:
         _cb("tracing_callers")
         system = build_system_prompt()
         user = build_user_prompt(self.repo_context, diff)
-        # Gemini uses a single content field; system instruction is prepended to ensure
-        # it is always present regardless of which Gemini variant handles the request.
+        # Bob expects a single content field; system instruction is prepended to ensure
+        # it is always present regardless of which model variant handles the request.
         full_prompt = f"{system}\n\n{user}"
 
         _cb("building_chains")

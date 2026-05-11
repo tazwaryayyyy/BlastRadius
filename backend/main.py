@@ -1,6 +1,6 @@
 """
 main.py
-BlastRadius — FastAPI backend (Gemini multi-agent edition)
+BlastRadius — FastAPI backend (IBM Bob multi-agent edition)
 
 Endpoints:
   GET  /api/health            Liveness probe (also / and /health)
@@ -44,7 +44,7 @@ logger = logging.getLogger("blastradius")
 # ── App ───────────────────────────────────────────────────────────
 app = FastAPI(
     title="BlastRadius",
-    description="Pre-merge impact prediction powered by Google Gemini",
+    description="Pre-merge impact prediction powered by IBM Bob (watsonx.ai)",
     version="2.0.0",
 )
 

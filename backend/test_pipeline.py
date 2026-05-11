@@ -360,7 +360,7 @@ class TestFullPipeline:
 
 # ── Bob client tests ─────────────────────────────────────────────
 
-class TestGeminiClient:
+class TestBobClient:
     """
     Verifies bob_client retry behaviour and TraceAgent round-trip
     without any live API calls.
@@ -376,7 +376,7 @@ class TestGeminiClient:
         resp.raise_for_status = MagicMock()
         return resp
 
-    def test_gemini_retries_on_429_then_succeeds(self):
+    def test_bob_retries_on_429_then_succeeds(self):
         """429 on first attempt, 200 on second — client must retry and return content."""
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
@@ -404,7 +404,7 @@ class TestGeminiClient:
         assert "call_chains" in result
         assert call_count == 2
 
-    def test_gemini_client_returns_parseable_json(self):
+    def test_bob_client_returns_parseable_json(self):
         """call_bob must return a string parseable by json.loads when Bob responds."""
         import asyncio
         from unittest.mock import AsyncMock, MagicMock, patch
@@ -422,7 +422,7 @@ class TestGeminiClient:
         assert "call_chains" in data
 
     def test_lowercase_confidence_is_normalised(self):
-        """_parse_report must uppercase confidence even when Gemini returns lowercase."""
+        """_parse_report must uppercase confidence even when Bob returns lowercase."""
         from main import _parse_report
 
         payload = json.dumps({
@@ -513,7 +513,7 @@ class TestSecurity:
 # ── Agent pipeline tests ───────────────────────────────────────────
 
 class TestAgentPipeline:
-    """End-to-end tests for the Gemini multi-agent pipeline without live API calls."""
+    """End-to-end tests for the Bob multi-agent pipeline without live API calls."""
 
     def test_trace_agent_returns_dict_with_required_keys(self):
         """TraceAgent.run() must return a dict with all required top-level keys."""
@@ -521,10 +521,10 @@ class TestAgentPipeline:
         from unittest.mock import AsyncMock, patch
         from trace_agent import TraceAgent
 
-        async def fake_call_gemini(prompt, **kwargs):
+        async def fake_call_bob(prompt, **kwargs):
             return json_dumps_mock_response()
 
-        with patch('trace_agent.call_bob', new=AsyncMock(side_effect=fake_call_gemini)):
+        with patch('trace_agent.call_bob', new=AsyncMock(side_effect=fake_call_bob)):
             diff = parse_diff(_load_demo_diff())
             result = asyncio.run(TraceAgent({}).run(diff))
 
@@ -532,7 +532,7 @@ class TestAgentPipeline:
             assert key in result, f"Missing key: {key}"
 
     def test_remediation_agent_skips_non_critical_chains(self):
-        """RemediationAgent must not call Gemini for MEDIUM/LOW chains."""
+        """RemediationAgent must not call Bob for MEDIUM/LOW chains."""
         import asyncio
         from unittest.mock import AsyncMock, patch
         from remediation_agent import RemediationAgent
@@ -552,7 +552,7 @@ class TestAgentPipeline:
         assert result['remediations'] == []
 
     def test_remediation_agent_generates_stub_for_critical_uncovered(self):
-        """RemediationAgent must call Gemini once per CRITICAL chain with no tests."""
+        """RemediationAgent must call Bob once per CRITICAL chain with no tests."""
         import asyncio
         from unittest.mock import AsyncMock, patch
         from remediation_agent import RemediationAgent
