@@ -47,12 +47,13 @@ let analysisStartTime = null;
 let streamSteps = [];
 
 const STAGE_LABELS = {
-  loading_repo: 'Loading repository context...',
-  parsing_diff: 'Parsing diff and extracting symbols...',
-  tracing_callers: 'Tracing callers of changed symbols...',
-  building_chains: 'Building upstream call chains...',
-  checking_coverage: 'Checking test coverage...',
-  generating_verdict: 'Computing merge verdict...',
+  loading_repo: 'Loading repository context into Bob...',
+  parsing_diff: 'Parsing diff — extracting changed symbols...',
+  tracing_callers: 'Bob: tracing callers of changed symbols...',
+  building_chains: 'Bob: building transitive call chains...',
+  checking_coverage: 'Bob: checking test coverage per chain...',
+  generating_verdict: 'Bob: computing BLOCK / PROCEED verdict...',
+  generating_stubs: 'Bob: generating test stubs for uncovered paths...',
 };
 
 
@@ -204,7 +205,8 @@ async function streamAnalysis(diff, repoPath, prTitle) {
       if (data.type === 'token') {
         if (streamMetrics && data.token_count) {
           const elapsed = analysisStartTime ? ((Date.now() - analysisStartTime) / 1000).toFixed(1) : '';
-          streamMetrics.textContent = `${data.token_count} tokens · ${elapsed}s`;
+          const stageLabel = data.stage === 'trace' ? 'Stage 1 complete' : data.stage === 'remediation' ? 'Stage 2 complete' : '';
+          streamMetrics.textContent = `${stageLabel ? stageLabel + ' · ' : ''}${data.token_count} tokens · ${elapsed}s`;
         }
         return;
       }

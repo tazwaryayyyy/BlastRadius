@@ -31,29 +31,41 @@ A developer opens a PR. Nobody knows what it affects downstream. BlastRadius fet
 
 ---
 
-## How It Compares
+## What Makes It Different
+
+Most AI code review tools read what you wrote. BlastRadius asks a different question: **what does this change break downstream?**
+
+It traces the transitive call chain from every changed symbol — `applyRateLimit` → `handleCharge` → `processPayment` → `chargeCard` — identifies which paths have no test coverage, generates the missing test stubs, and issues a binary BLOCK or PROCEED verdict with a shareable URL. That full-chain blast radius analysis with a machine-actionable verdict is what existing tools don't do.
 
 | | GitHub PR Review | CodeRabbit | **BlastRadius** |
 |---|---|---|---|
 | Reviews what you wrote | ✓ | ✓ | ✓ |
-| Traces downstream call chains | ✗ | ✗ | ✓ |
+| **Traces transitive downstream call chains** | **✗** | **✗** | **✓** |
+| **BLOCK / PROCEED verdict** | **✗** | **✗** | **✓** |
 | Identifies untested impact paths | ✗ | partial | ✓ |
 | Auto-generates missing test stubs | ✗ | ✗ | ✓ |
 | Works on any public GitHub PR URL | ✗ | ✓ | ✓ |
 | Posts impact report as PR comment | ✗ | ✓ | ✓ |
-| Shareable report URL | ✗ | ✗ | ✓ |
+| **Shareable report URL** | **✗** | **✗** | **✓** |
 
 ---
 
 ## Architecture
 
 ```
-PR URL → GitHub Loader → [TraceAgent] → [RemediationAgent] → Report + Share Link
-                               ↓                 ↓
-                        Blast Radius Graph   Test Stubs + Fix Summary
+PR URL → GitHub Loader → [Stage 1: TraceAgent] ──────────────→ [Stage 2: RemediationAgent]
+                               ↓ Bob: multi-hop chain-of-thought       ↓ Bob: stub generation
+                         call chains + risk + AST badges         test stubs + fix summaries
+                               └──────────────────────────────── Report + Share Link
 ```
 
-TraceAgent (IBM Bob) performs multi-hop call chain reasoning across the repository context — tracing which files call which functions, how deep the impact propagates, and which paths have no test coverage. Its output feeds directly into RemediationAgent (IBM Bob), which generates complete, runnable pytest stubs for every uncovered critical path. Both agents stream real stage events to the frontend over SSE so the analysis feels live, not opaque.
+BlastRadius runs a **structured two-stage reasoning pipeline** powered entirely by IBM Bob:
+
+- **Stage 1 — TraceAgent:** Bob performs structured chain-of-thought reasoning across the repository context, tracing which files call which functions, how deep the impact propagates, and which paths have no test coverage. Each call chain gets an AST-verified confidence badge (VERIFIED / INFERRED). Bob emits live stage events (`tracing_callers → building_chains → checking_coverage`) streamed to the UI so you see the reasoning unfold in real time.
+
+- **Stage 2 — RemediationAgent:** Bob's TraceAgent output feeds directly into a second focused Bob call. For every CRITICAL uncovered path, Bob generates a complete, runnable test stub with a one-line fix summary. On a BLOCK verdict, a cost estimate (based on DORA 2023 medians) surfaces the business risk.
+
+Both stages use `BOB_PROJECT_ID`-scoped watsonx.ai inference. Context is prioritised (changed files first, then their importers) so Bob reasons over the most relevant code even for large repos.
 
 ---
 
