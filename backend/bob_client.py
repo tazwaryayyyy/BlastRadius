@@ -10,6 +10,7 @@ import asyncio
 import json
 import logging
 import os
+import time
 
 import httpx
 
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 BOB_API_KEY = os.getenv("BOB_API_KEY", "")
 BOB_API_URL = os.getenv("BOB_API_URL", "")
 BOB_MODEL = os.getenv("BOB_MODEL", "ibm/granite-3-3-8b-instruct")
-
+BOB_PROJECT_ID = os.getenv("BOB_PROJECT_ID", "")
 # ── Fallback: any OpenAI-compatible endpoint ───────────────────────
 BOB_FALLBACK_API_KEY = os.getenv("BOB_FALLBACK_API_KEY", "")
 BOB_FALLBACK_URL = os.getenv("BOB_FALLBACK_URL", "")
@@ -27,6 +28,35 @@ BOB_FALLBACK_MODEL = os.getenv("BOB_FALLBACK_MODEL", "gpt-4o")
 
 _TIMEOUT = 120.0
 _MAX_RETRIES = 3
+
+# ── IAM token cache ───────────────────────────────────
+_iam_token: str = ""
+_iam_token_expiry: float = 0.0
+
+
+async def _get_iam_token() -> str:
+    """Exchange BOB_API_KEY for an IBM Cloud IAM bearer token.
+
+    The token is cached in memory and refreshed when within 60 seconds of expiry.
+    """
+    global _iam_token, _iam_token_expiry
+    if _iam_token and time.monotonic() < _iam_token_expiry - 60:
+        return _iam_token
+    async with httpx.AsyncClient() as client:
+        resp = await client.post(
+            "https://iam.cloud.ibm.com/identity/token",
+            data={
+                "grant_type": "urn:ibm:params:oauth:grant-type:apikey",
+                "apikey": BOB_API_KEY,
+            },
+            headers={"Content-Type": "application/x-www-form-urlencoded"},
+            timeout=15,
+        )
+        resp.raise_for_status()
+        data = resp.json()
+        _iam_token = data["access_token"]
+        _iam_token_expiry = time.monotonic() + data["expires_in"]
+        return _iam_token
 
 
 def _clean_json(raw: str) -> str:
@@ -53,9 +83,10 @@ async def call_bob(
     if not BOB_API_KEY:
         raise ValueError("BOB_API_KEY is not set.")
 
-    url = f"{BOB_API_URL}/chat/completions"
+    token = await _get_iam_token()
+    url = BOB_API_URL
     headers = {
-        "Authorization": f"Bearer {BOB_API_KEY}",
+        "Authorization": f"Bearer {token}",
         "Content-Type": "application/json",
     }
     payload = {
@@ -63,6 +94,7 @@ async def call_bob(
         "messages": [{"role": "user", "content": prompt}],
         "temperature": temperature,
         "max_tokens": max_tokens,
+        "project_id": BOB_PROJECT_ID,
     }
 
     async with httpx.AsyncClient(timeout=_TIMEOUT) as client:

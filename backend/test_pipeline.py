@@ -397,6 +397,7 @@ class TestGeminiClient:
 
         with patch("httpx.AsyncClient.post", new=fake_post), \
                 patch.object(bob_client, "BOB_API_KEY", "test-key"), \
+                patch("bob_client._get_iam_token", new=AsyncMock(return_value="fake-iam-token")), \
                 patch("asyncio.sleep", new=AsyncMock()):
             result = asyncio.run(bob_client.call_bob("test prompt"))
 
@@ -406,14 +407,15 @@ class TestGeminiClient:
     def test_gemini_client_returns_parseable_json(self):
         """call_bob must return a string parseable by json.loads when Bob responds."""
         import asyncio
-        from unittest.mock import MagicMock, patch
+        from unittest.mock import AsyncMock, MagicMock, patch
         import bob_client
 
         async def fake_post(self_client, url, json=None, **kwargs):
             return self._mock_bob_response(json_dumps_mock_response())
 
         with patch("httpx.AsyncClient.post", new=fake_post), \
-                patch.object(bob_client, "BOB_API_KEY", "test-key"):
+                patch.object(bob_client, "BOB_API_KEY", "test-key"), \
+                patch("bob_client._get_iam_token", new=AsyncMock(return_value="fake-iam-token")):
             raw = asyncio.run(bob_client.call_bob("test prompt"))
 
         data = json.loads(raw)
