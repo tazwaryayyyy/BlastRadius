@@ -16,6 +16,3 @@ coverage/
 # OS
 .DS_Store
 Thumbs.db
-
-# Static pinned reports (JSON files only; keep .gitkeep)
-backend/static_reports/*.json
