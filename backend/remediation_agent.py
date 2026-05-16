@@ -31,15 +31,15 @@ class RemediationAgent:
         stage1_exchange: list[dict] = report_dict.pop("_stage1_exchange", [])
         prior_backend: str = report_dict.pop("_inference_backend", "bob")
 
-        critical_uncovered = [
+        uncovered_chains = [
             c for c in report_dict.get("call_chains", [])
-            if c.get("risk") == "CRITICAL" and not c.get("has_tests", True)
+            if c.get("risk") in ("CRITICAL", "HIGH") and not c.get("has_tests", True)
         ]
 
         remediations: list[dict] = []
         remediation_tokens = 0
         used_fallback = prior_backend == "fallback"
-        for chain in critical_uncovered:
+        for chain in uncovered_chains:
             prompt = _build_prompt(chain, repo_context)
             # Multi-turn: append Stage 2 ask to Stage 1 exchange so Bob sees
             # its own prior trace analysis as conversation context.
@@ -62,20 +62,34 @@ class RemediationAgent:
 
         # ── Cost estimate (only when verdict is BLOCK) ─────────────────
         if report_dict.get("merge_recommendation", "").upper().find("BLOCK") != -1:
+            all_chains = report_dict.get("call_chains", [])
             critical_uncovered_count = len([
-                c for c in report_dict.get("call_chains", [])
+                c for c in all_chains
                 if c.get("risk") == "CRITICAL" and not c.get("has_tests", True)
             ])
+            high_uncovered_count = len([
+                c for c in all_chains
+                if c.get("risk") == "HIGH" and not c.get("has_tests", True)
+            ])
             stubs_count = len(remediations)
-            incident_cost = critical_uncovered_count * \
-                INCIDENT_RESTORE_HOURS * COST_PER_HOUR
+            # CRITICAL paths weighted at full incident cost; HIGH at 50%
+            incident_cost = (
+                critical_uncovered_count + high_uncovered_count * 0.5
+            ) * INCIDENT_RESTORE_HOURS * COST_PER_HOUR
             hours_saved = stubs_count * HOURS_SAVED_PER_STUB
+            parts = []
+            if critical_uncovered_count:
+                parts.append(f"{critical_uncovered_count} critical")
+            if high_uncovered_count:
+                parts.append(f"{high_uncovered_count} high-risk")
+            path_desc = (" + ".join(parts) +
+                         " uncovered path(s)") if parts else "uncovered paths"
             cost_estimate = CostEstimate(
                 incident_cost_usd=round(incident_cost, 2),
                 hours_saved=round(hours_saved, 1),
                 stubs_generated=stubs_count,
                 calculation_basis=(
-                    f"Based on {critical_uncovered_count} critical uncovered path(s). "
+                    f"Based on {path_desc}. "
                     f"DORA 2023: median restore time {INCIDENT_RESTORE_HOURS}h "
                     f"at ${COST_PER_HOUR}/hr engineering cost. "
                     f"Estimate based on industry medians — your actual figures may vary."
@@ -103,9 +117,10 @@ def _build_prompt(chain: dict, repo_context: dict[str, str]) -> str:
     leaf = path[-1].split("/")[-1] if path else "module"
     module_name = leaf.replace(".js", "").replace(".ts", "").replace(".py", "")
 
+    risk_level = chain.get("risk", "CRITICAL")
     return (
         f"You are a test engineer. Generate a complete, runnable pytest stub for this "
-        f"untested CRITICAL code path. No preamble. Output ONLY valid JSON.\n\n"
+        f"untested {risk_level} code path. No preamble. Output ONLY valid JSON.\n\n"
         f"Chain: {chain_id}\nPath: {' -> '.join(path)}\n"
         f"Symbols: {', '.join(symbols)}\nBusiness impact: {impact}\n\n"
         f"Source files:\n{file_blocks}\n\n"

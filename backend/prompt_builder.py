@@ -88,6 +88,10 @@ Use explicit uncertainty language in confidence_reason whenever anything is infe
 STEP 4 — TEST COVERAGE CHECK
 For each chain, check whether any file in __tests__/, *.test.*, or *.spec.* explicitly
 imports and calls a function in this chain's path. Set has_tests accordingly.
+IMPORTANT: A test file appearing as the last node in the chain path is NOT evidence of
+coverage — it means the chain terminates at a test file, not that the changed symbol's
+new behavior is tested. Only set has_tests=true if a test file explicitly imports and
+exercises the changed symbol under its new behavior.
 
 STEP 5 — OUTPUT
 Produce ONLY the following JSON object. No preamble. No markdown. No backticks.
