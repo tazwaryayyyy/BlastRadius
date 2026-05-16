@@ -302,6 +302,20 @@ function renderReport(report) {
     }
   }
 
+  // Surface which backend served this report — visible to judges and live-demo observers
+  const bobBadgeEl = document.querySelector('.bob-badge');
+  if (bobBadgeEl) {
+    if (report.inference_backend === 'fallback') {
+      bobBadgeEl.textContent = 'Fallback LLM';
+      bobBadgeEl.style.cssText = 'background:#b45309;color:#fef3c7;';
+      bobBadgeEl.title = 'IBM Bob was unavailable — this analysis ran on the configured fallback endpoint.';
+    } else {
+      bobBadgeEl.textContent = 'IBM Bob';
+      bobBadgeEl.style.cssText = '';
+      bobBadgeEl.title = '';
+    }
+  }
+
   // Graph
   graphIdle.style.display = 'none';
   BlastGraph.renderGraph(report);

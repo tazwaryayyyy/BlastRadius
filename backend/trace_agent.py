@@ -40,13 +40,20 @@ class TraceAgent:
 
         _cb("building_chains")
         if image_b64 and mime_type:
-            raw, token_count = await call_bob_multimodal(full_prompt, image_b64, mime_type)
+            raw, token_count, backend = await call_bob_multimodal(full_prompt, image_b64, mime_type)
         else:
-            raw, token_count = await call_bob(full_prompt)
+            raw, token_count, backend = await call_bob(full_prompt)
 
         _cb("checking_coverage")
         report_dict = json.loads(_clean_json(raw))
         report_dict["_trace_tokens"] = token_count
+        report_dict["_inference_backend"] = backend
+        # Preserve the full stage-1 exchange so RemediationAgent can build a
+        # genuine multi-turn conversation — Bob sees its own prior analysis.
+        report_dict["_stage1_exchange"] = [
+            {"role": "user", "content": full_prompt},
+            {"role": "assistant", "content": raw},
+        ]
 
         # ── AST verification: badge each call chain edge ──────────────
         for chain in report_dict.get("call_chains", []):

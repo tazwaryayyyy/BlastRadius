@@ -415,7 +415,8 @@ class TestBobClient:
                 patch.object(bob_client, "BOB_API_KEY", "test-key"), \
                 patch("bob_client._get_iam_token", new=AsyncMock(return_value="fake-iam-token")), \
                 patch("asyncio.sleep", new=AsyncMock()):
-            result, _tokens = asyncio.run(bob_client.call_bob("test prompt"))
+            result, _tokens, _backend = asyncio.run(
+                bob_client.call_bob("test prompt"))
 
         assert "call_chains" in result
         assert call_count == 2
@@ -432,7 +433,8 @@ class TestBobClient:
         with patch("httpx.AsyncClient.post", new=fake_post), \
                 patch.object(bob_client, "BOB_API_KEY", "test-key"), \
                 patch("bob_client._get_iam_token", new=AsyncMock(return_value="fake-iam-token")):
-            raw, _tokens = asyncio.run(bob_client.call_bob("test prompt"))
+            raw, _tokens, _backend = asyncio.run(
+                bob_client.call_bob("test prompt"))
 
         data = json.loads(raw)
         assert "call_chains" in data
@@ -538,7 +540,7 @@ class TestAgentPipeline:
         from trace_agent import TraceAgent
 
         async def fake_call_bob(prompt, **kwargs):
-            return json_dumps_mock_response(), 0
+            return json_dumps_mock_response(), 0, "bob"
 
         with patch('trace_agent.call_bob', new=AsyncMock(side_effect=fake_call_bob)):
             diff = parse_diff(_load_demo_diff())
@@ -591,7 +593,7 @@ class TestAgentPipeline:
             ],
         }
 
-        with patch('remediation_agent.call_bob', new=AsyncMock(return_value=(rem_json, 0))):
+        with patch('remediation_agent.call_bob', new=AsyncMock(return_value=(rem_json, 0, "bob"))):
             result = asyncio.run(RemediationAgent().run(report_dict, {}))
 
         assert len(result['remediations']) == 1

@@ -27,6 +27,10 @@ class RemediationAgent:
         repo_context: dict[str, str],
         stage_callback: Callable[[str], None] | None = None,
     ) -> dict:
+        # Pop stage-1 exchange before processing — used for multi-turn context below
+        stage1_exchange: list[dict] = report_dict.pop("_stage1_exchange", [])
+        prior_backend: str = report_dict.pop("_inference_backend", "bob")
+
         critical_uncovered = [
             c for c in report_dict.get("call_chains", [])
             if c.get("risk") == "CRITICAL" and not c.get("has_tests", True)
@@ -34,10 +38,16 @@ class RemediationAgent:
 
         remediations: list[dict] = []
         remediation_tokens = 0
+        used_fallback = prior_backend == "fallback"
         for chain in critical_uncovered:
             prompt = _build_prompt(chain, repo_context)
+            # Multi-turn: append Stage 2 ask to Stage 1 exchange so Bob sees
+            # its own prior trace analysis as conversation context.
+            messages = stage1_exchange + [{"role": "user", "content": prompt}]
             try:
-                raw, tokens = await call_bob(prompt)
+                raw, tokens, backend = await call_bob(messages=messages)
+                if backend == "fallback":
+                    used_fallback = True
                 remediation_tokens += tokens
                 data = json.loads(_clean_json(raw))
                 remediations.append(RemediationResult(**data).model_dump())
@@ -47,6 +57,8 @@ class RemediationAgent:
 
         report_dict["remediations"] = remediations
         report_dict["_remediation_tokens"] = remediation_tokens
+        # Propagate backend: sticky — once any call hit fallback, the report is "fallback"
+        report_dict["_inference_backend"] = "fallback" if used_fallback else "bob"
 
         # ── Cost estimate (only when verdict is BLOCK) ─────────────────
         if report_dict.get("merge_recommendation", "").upper().find("BLOCK") != -1:

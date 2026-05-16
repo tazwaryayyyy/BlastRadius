@@ -185,6 +185,10 @@ async def _analysis_event_gen(
         rem_tokens = report_dict.pop("_remediation_tokens", 0)
         yield f"data: {json.dumps({'type': 'token', 'token_count': rem_tokens, 'stage': 'remediation'})}\n\n"
 
+        # Promote _inference_backend to a proper report field before serialisation
+        report_dict["inference_backend"] = report_dict.pop(
+            "_inference_backend", "bob")
+
         if context_stats:
             report_dict["context_stats"] = context_stats.model_dump()
 
@@ -226,6 +230,10 @@ async def _run_analysis(req: AnalyzeRequest) -> BlastRadiusReport:
         trace = TraceAgent(all_files)
         report_dict = await trace.run(diff_result)
         report_dict = await RemediationAgent().run(report_dict, all_files)
+        report_dict.pop("_trace_tokens", None)
+        report_dict.pop("_remediation_tokens", None)
+        report_dict["inference_backend"] = report_dict.pop(
+            "_inference_backend", "bob")
     except ValueError as exc:
         logger.error("Analysis service error: %s", exc)
         raise HTTPException(

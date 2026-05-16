@@ -73,19 +73,25 @@ def _clean_json(raw: str) -> str:
 
 
 async def call_bob(
-    prompt: str,
+    prompt: str = "",
     temperature: float = 0.0,
     max_tokens: int = 8192,
-) -> tuple[str, int]:
+    messages: list[dict] | None = None,
+) -> tuple[str, int, str]:
     """Call the IBM Bob API (OpenAI-compatible chat completions).
 
+    Supports single-turn (prompt only) and multi-turn (messages list).
     Retries up to _MAX_RETRIES times on 429. Falls back to the secondary
     endpoint on any other non-200 response. Logs all errors — never leaks
     raw HTTP errors to the caller.
+
+    Returns (text, token_count, backend) where backend is 'bob' or 'fallback'.
     """
     if not BOB_API_KEY:
         raise ValueError("BOB_API_KEY is not set.")
 
+    msgs = messages if messages is not None else [
+        {"role": "user", "content": prompt}]
     token = await _get_iam_token()
     url = BOB_API_URL
     headers = {
@@ -95,7 +101,7 @@ async def call_bob(
     payload = {
         "model_id": BOB_MODEL,
         "project_id": BOB_PROJECT_ID,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": msgs,
         "parameters": {
             "temperature": temperature,
             "max_new_tokens": max_tokens,
@@ -119,7 +125,7 @@ async def call_bob(
                 if resp.status_code != 200:
                     logger.error(
                         "Bob HTTP %s — trying fallback", resp.status_code)
-                    return await _call_fallback(prompt, temperature, max_tokens)
+                    return await _call_fallback(msgs, temperature, max_tokens)
 
                 resp.raise_for_status()
                 data = resp.json()
@@ -128,12 +134,12 @@ async def call_bob(
                         text = data["results"][0]["generated_text"]
                         tokens = int(data["results"][0].get(
                             "generated_token_count", 0))
-                        return text, tokens
+                        return text, tokens, "bob"
                     elif "choices" in data:
                         text = data["choices"][0]["message"]["content"]
                         tokens = int(data.get("usage", {}).get(
                             "completion_tokens", 0))
-                        return text, tokens
+                        return text, tokens, "bob"
                     else:
                         raise ValueError(
                             f"Unrecognized response shape: {list(data.keys())}")
@@ -143,7 +149,7 @@ async def call_bob(
 
             except httpx.HTTPStatusError as exc:
                 logger.error("Bob HTTP %s: %s", exc.response.status_code, exc)
-                return await _call_fallback(prompt, temperature, max_tokens)
+                return await _call_fallback(msgs, temperature, max_tokens)
 
             except httpx.TimeoutException:
                 if attempt < _MAX_RETRIES - 1:
@@ -154,10 +160,10 @@ async def call_bob(
 
 
 async def _call_fallback(
-    prompt: str,
+    messages: list[dict],
     temperature: float,
     max_tokens: int,
-) -> tuple[str, int]:
+) -> tuple[str, int, str]:
     """Secondary OpenAI-compatible endpoint, used when Bob is unavailable."""
     if not BOB_FALLBACK_API_KEY or not BOB_FALLBACK_URL:
         raise ValueError("Analysis service unavailable.")
@@ -175,7 +181,7 @@ async def _call_fallback(
     }
     payload = {
         "model": BOB_FALLBACK_MODEL,
-        "messages": [{"role": "user", "content": prompt}],
+        "messages": messages,
         "temperature": temperature,
         "max_tokens": max_tokens,
     }
@@ -187,7 +193,7 @@ async def _call_fallback(
             data = resp.json()
             text = data["choices"][0]["message"]["content"]
             tokens = int(data.get("usage", {}).get("completion_tokens", 0))
-            return text, tokens
+            return text, tokens, "fallback"
         except Exception as exc:
             logger.error("Fallback also failed: %s", exc)
             raise ValueError("Analysis service unavailable.") from exc
@@ -197,7 +203,7 @@ async def call_bob_multimodal(
     text_prompt: str,
     image_b64: str,
     mime_type: str,
-) -> tuple[str, int]:
+) -> tuple[str, int, str]:
     """IBM Bob does not support multimodal natively.
 
     Strips the image, logs a warning, and forwards the text prompt only with

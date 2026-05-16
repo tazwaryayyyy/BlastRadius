@@ -68,6 +68,7 @@ class BlastRadiusReport(BaseModel):
     remediations: list[RemediationResult] = Field(default_factory=list)
     context_stats: Optional[ContextStats] = None
     cost_estimate: Optional[CostEstimate] = None
+    inference_backend: str = "bob"  # "bob" | "fallback" — which LLM served this report
 
 
 class DiffResult(BaseModel):
