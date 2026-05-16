@@ -145,7 +145,8 @@ body::after {
   letter-spacing: -0.03em;
   color: var(--text);
   flex-shrink: 0;
-  user-select: none
+  user-select: none;
+  cursor: pointer;
 }
 
 .logo span {
@@ -161,6 +162,27 @@ body::after {
   text-overflow: ellipsis;
   white-space: nowrap;
   min-width: 0
+}
+
+/* New analysis ghost-link button */
+.new-analysis-btn {
+  background: none;
+  border: none;
+  color: var(--text-3);
+  font-family: var(--sans);
+  font-size: 11px;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  padding: 3px 7px;
+  border-radius: 4px;
+  flex-shrink: 0;
+  transition: color 0.15s, background 0.15s;
+  white-space: nowrap;
+}
+
+.new-analysis-btn:hover {
+  color: var(--text-2);
+  background: rgba(255, 255, 255, 0.05);
 }
 
 #bob-metrics {
@@ -283,7 +305,8 @@ body::after {
   display: flex;
   align-items: center;
   gap: 5px;
-  flex-shrink: 0
+  flex-shrink: 0;
+  margin-left: 2px;
 }
 
 .bob-powered {
@@ -292,19 +315,6 @@ body::after {
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: var(--text-4)
-}
-
-.bob-badge {
-  font-family: var(--mono);
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--bob);
-  background: var(--bob-bg);
-  border: 1px solid var(--bob-border);
-  border-radius: 4px;
-  padding: 2px 8px;
-  box-shadow: 0 0 10px rgba(15, 98, 254, 0.12);
 }
 
 #demo-btn {
@@ -389,6 +399,17 @@ body::after {
   letter-spacing: 0.10em;
   text-transform: uppercase;
   color: var(--text-3);
+}
+
+/* Section label — not a tab, not interactive */
+.panel-label {
+  font-family: var(--sans);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.10em;
+  text-transform: uppercase;
+  color: var(--text-4);
+  user-select: none;
 }
 
 .panel-body {
@@ -552,8 +573,8 @@ body::after {
 }
 
 .idle-icon {
-  font-size: 34px;
-  color: rgba(255, 255, 255, 0.07);
+  font-size: 28px;
+  color: var(--text-4);
   line-height: 1
 }
 
@@ -667,8 +688,8 @@ body::after {
 }
 
 #stream-metrics {
-  color: var(--text-3);
-  font-size: 10px
+  color: var(--text-4);
+  font-size: 9px
 }
 
 #stream-content {
@@ -677,7 +698,9 @@ body::after {
 }
 
 .stream-step {
-  margin-top: 3px
+  margin-top: 3px;
+  padding-left: 8px;
+  border-left: 2px solid var(--accent);
 }
 
 /* Recommendation bar */
@@ -962,7 +985,7 @@ body::after {
 
 .chain-path .arrow {
   color: rgba(255, 255, 255, 0.16);
-  margin: 0 3px
+  margin: 0 4px
 }
 
 .chain-path .node {
@@ -970,7 +993,10 @@ body::after {
 }
 
 .chain-path .node.changed {
-  color: var(--changed)
+  color: var(--changed);
+  display: inline-block;
+  border-left: 2px solid var(--changed);
+  padding-left: 4px;
 }
 
 .chain-impact {
@@ -1186,10 +1212,10 @@ button:focus-visible {
 #pr-url-input {
   width: 100%;
   box-sizing: border-box;
-  background: var(--bg-2);
+  background: var(--bg-elevated);
   border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--text-1);
+  color: var(--text);
   font-family: var(--mono);
   font-size: 12px;
   padding: 10px 12px;
@@ -1199,6 +1225,55 @@ button:focus-visible {
 
 #pr-url-input:focus {
   border-color: var(--accent);
+}
+
+#pr-url-input::placeholder {
+  color: var(--text-3);
+}
+
+/* GitHub URL panel container */
+#github-url-panel {
+  padding: 14px;
+}
+
+/* -- Analyze PR (primary bob-blue action) -- */
+#analyze-github-btn {
+  display: block;
+  width: 100%;
+  margin-top: 10px;
+  background: var(--bob);
+  color: #fff;
+  border: none;
+  padding: 8px 14px;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  border-radius: 6px;
+  cursor: pointer;
+  box-shadow:
+    rgba(15, 98, 254, 0.5) 0 0 0 1px,
+    inset rgba(255, 255, 255, 0.15) 0 1px 0;
+  transition: background 0.15s var(--ease-expo), box-shadow 0.15s var(--ease-expo), transform 0.1s;
+}
+
+#analyze-github-btn:hover {
+  background: #0050d0;
+  box-shadow:
+    rgba(15, 98, 254, 0.6) 0 0 0 1px,
+    rgba(15, 98, 254, 0.25) 0 4px 16px,
+    inset rgba(255, 255, 255, 0.18) 0 1px 0;
+}
+
+#analyze-github-btn:active {
+  transform: scale(0.98);
+}
+
+#analyze-github-btn:disabled {
+  opacity: 0.35;
+  cursor: default;
+  transform: none;
 }
 
 /* -- Input mode toggle -- */
@@ -1263,10 +1338,26 @@ button:focus-visible {
   font-size: 10px;
 }
 
-/* -- IBM Bob badge -- */
+/* -- IBM Bob badge (always visible, never hidden) -- */
 .bob-badge {
-  background: linear-gradient(135deg, #054ADA, #0062ff) !important;
-  border: none !important;
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #fff;
+  background: var(--bob);
+  border: 1px solid var(--bob);
+  border-radius: 4px;
+  padding: 2px 8px;
+  box-shadow: 0 0 10px rgba(15, 98, 254, 0.25);
+  transition: background 0.25s, color 0.25s, border-color 0.25s, box-shadow 0.25s;
+}
+
+.bob-badge.bob-badge--fallback {
+  color: #1a0800;
+  background: var(--medium);
+  border-color: var(--medium);
+  box-shadow: none;
 }
 
 /* ── Risk Cost Estimator panel ──────────────────────────────────────── */

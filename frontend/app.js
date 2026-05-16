@@ -41,6 +41,7 @@ const mergeVerdictEl = document.getElementById('merge-verdict');
 const recommendBar = document.getElementById('recommendation-bar');
 const suggestedActionsEl = document.getElementById('suggested-actions');
 const bobMetrics = document.getElementById('bob-metrics');
+const newAnalysisBtn = document.getElementById('new-analysis-btn');
 
 // Analysis timing
 let analysisStartTime = null;
@@ -63,6 +64,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   demoBtn.addEventListener('click', runDemo);
   analyzeBtn?.addEventListener('click', runCustomAnalysis);
+  document.querySelector('.logo')?.addEventListener('click', handleNewAnalysis);
+  newAnalysisBtn?.addEventListener('click', handleNewAnalysis);
 
   // Inline GitHub URL panel — Analyze PR button
   document.getElementById('analyze-github-btn')?.addEventListener('click', async () => {
@@ -169,6 +172,10 @@ async function runCustomAnalysis() {
 //   Opens SSE. The session data is server-side; no diff content appears in the URL.
 //
 async function streamAnalysis(diff, repoPath, prTitle) {
+  // BUG 4: resetUI destroys the SVG — re-init if the container is empty
+  if (!document.querySelector('#graph-canvas svg')) {
+    BlastGraph.initGraph('graph-canvas', onNodeClick);
+  }
   showStreamLog();
 
   // POST the diff body to get a server-side session token.
@@ -307,14 +314,17 @@ function renderReport(report) {
   if (bobBadgeEl) {
     if (report.inference_backend === 'fallback') {
       bobBadgeEl.textContent = 'Fallback LLM';
-      bobBadgeEl.style.cssText = 'background:#b45309;color:#fef3c7;';
-      bobBadgeEl.title = 'IBM Bob was unavailable — this analysis ran on the configured fallback endpoint.';
+      bobBadgeEl.classList.add('bob-badge--fallback');
+      bobBadgeEl.title = 'Analysis by IBM Bob (watsonx) unavailable — running on fallback endpoint.';
     } else {
       bobBadgeEl.textContent = 'IBM Bob';
-      bobBadgeEl.style.cssText = '';
-      bobBadgeEl.title = '';
+      bobBadgeEl.classList.remove('bob-badge--fallback');
+      bobBadgeEl.title = 'Analysis by IBM Bob (watsonx)';
     }
   }
+
+  // BUG 1: show the reset control now that analysis is complete
+  if (newAnalysisBtn) newAnalysisBtn.style.display = 'inline';
 
   // Graph
   graphIdle.style.display = 'none';
@@ -494,7 +504,7 @@ function renderSuggestedActions(actions) {
 
   suggestedActionsEl.style.display = 'block';
   suggestedActionsEl.innerHTML = `
-    <div class="actions-title">What to do before merging</div>
+    <div class="actions-title">Required before merge</div>
     ${actions.map((action) => `
       <label class="action-item">
         <input type="checkbox" />
@@ -594,7 +604,7 @@ function clearUI() {
   graphIdle.style.display = 'flex';
   detailPanel.innerHTML = '';
   detailEmpty.style.display = 'block';
-  detailEmpty.innerHTML = 'Click a node in the graph<br />to see its blast radius chain.';
+  detailEmpty.innerHTML = 'Select a node to inspect its call chain and risk path.';
   if (noChainsState) noChainsState.style.display = 'none';
   riskBadge.className = '';
   riskBadge.style.display = 'none';
@@ -609,10 +619,23 @@ function clearUI() {
     suggestedActionsEl.style.display = 'none';
   }
   if (bobMetrics) bobMetrics.style.display = 'none';
+  if (newAnalysisBtn) newAnalysisBtn.style.display = 'none';
+  const _badge = document.querySelector('.bob-badge');
+  if (_badge) _badge.classList.remove('bob-badge--fallback');
   analysisStartTime = null;
   streamSteps = [];
   DiffViewer.clearDiff('diff-container');
 }
+
+// ── New analysis reset (BUG 1) ───────────────────────────────────
+function handleNewAnalysis() {
+  resetUI();
+  BlastGraph.initGraph('graph-canvas', onNodeClick);
+  const savedMode = sessionStorage.getItem('inputMode') || 'url';
+  _applyInputMode(savedMode);
+  if (prTitleEl) prTitleEl.textContent = 'Paste a diff or drop a GitHub PR URL to trace impact.';
+}
+
 
 function resetUI() {
   // Cancel any active SSE stream
@@ -713,6 +736,11 @@ function showWarning(anchorEl, msg) {
 // ── GitHub URL analysis ────────────────────────────────────────────
 async function streamGithubAnalysis(prUrl) {
   resetUI();
+
+  // BUG 4: resetUI destroys the SVG — re-init if the container is empty
+  if (!document.querySelector('#graph-canvas svg')) {
+    BlastGraph.initGraph('graph-canvas', onNodeClick);
+  }
 
   const _urlInput = document.getElementById('pr-url-input');
   const _analyzeBtn = document.getElementById('analyze-github-btn');

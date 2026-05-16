@@ -21,7 +21,9 @@
     <!-- Header -->
     <header id="header">
       <div class="logo">Blast<span>Radius</span></div>
-      <div class="pr-title" id="pr-title">No PR loaded — press Run Demo to begin</div>
+      <div class="pr-title" id="pr-title">Paste a diff or drop a GitHub PR URL to trace impact.</div>
+      <button id="new-analysis-btn" class="new-analysis-btn" style="display:none" aria-label="Start new analysis">← New
+        Analysis</button>
       <div id="bob-metrics"></div>
       <div id="risk-score" class="score-neutral">
         <span class="score-label">Risk Score</span>
@@ -29,8 +31,8 @@
       </div>
       <div id="risk-badge"></div>
       <div class="bob-badge-wrap">
-        <span class="bob-powered">Powered by</span>
-        <span class="bob-badge">IBM Bob</span>
+        <span class="bob-powered">Analysis by</span>
+        <span class="bob-badge" title="Analysis by IBM Bob (watsonx)">IBM Bob</span>
       </div>
       <button id="demo-btn">Run Demo</button>
     </header>
@@ -41,7 +43,7 @@
       <!-- LEFT: Diff viewer -->
       <div class="panel" id="left-panel">
         <div class="panel-header">
-          <span class="panel-title">PR Diff</span>
+          <span class="panel-label">PR Diff</span>
           <div style="display:flex;gap:6px;align-items:center">
             <button class="btn-sm mode-toggle" id="mode-url-btn" onclick="toggleInputMode('url')">GitHub URL</button>
             <button class="btn-sm mode-toggle" id="mode-diff-btn" onclick="toggleInputMode('diff')">Paste Diff</button>
@@ -54,17 +56,14 @@
         <div class="panel-body">
           <div id="diff-container">
             <div class="diff-placeholder">
-              The diff will appear here.<br />
-              Press <strong>Run Demo</strong> to load a pre-seeded
-              rate limiter PR — or paste your own diff above.
+              Diff loads here after analysis runs.<br />
+              <strong>Load the demo PR (rate limiter change) or paste any unified diff above.</strong>
             </div>
           </div>
-          <div id="github-url-panel" style="display:none; padding: 1rem;">
+          <div id="github-url-panel" style="display:none">
             <input type="url" id="pr-url-input" placeholder="https://github.com/owner/repo/pull/123"
-              aria-label="GitHub PR URL" style="width:100%; padding:0.75rem; background:var(--bg-secondary);
-                     border:1px solid var(--border); color:var(--text-primary);
-                     border-radius:6px; font-size:0.9rem;" />
-            <button id="analyze-github-btn" style="margin-top:0.75rem;">
+              aria-label="GitHub PR URL" />
+            <button id="analyze-github-btn" aria-label="Analyze this GitHub PR">
               Analyze PR
             </button>
           </div>
@@ -81,15 +80,10 @@
         <div id="graph-canvas" role="img" aria-label="Blast radius impact graph">
           <div id="graph-idle">
             <div class="idle-icon">◎</div>
-            <div class="idle-text">
-              Blast radius graph will render here.<br />
-              Nodes = files &nbsp;·&nbsp; Color = risk level<br />
-              Dashed border = no test coverage<br />
-              Solid edge = verified &nbsp;·&nbsp; Dashed edge = inferred
-            </div>
+            <div class="idle-text">Impact graph renders after analysis.</div>
             <button id="idle-demo-btn" class="btn-sm" aria-label="Run demo analysis"
               onclick="document.getElementById('demo-btn').click()">
-              ▶ Run Demo
+              Run Demo
             </button>
           </div>
         </div>
@@ -142,7 +136,7 @@
         </div>
         <div class="panel-body">
           <div id="detail-empty">
-            Click a node in the graph<br />to see its blast radius chain.
+            Select a node to inspect its call chain and risk path.
           </div>
           <div id="no-chains-state">
             <div class="no-chains-icon">✓</div>
