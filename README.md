@@ -20,7 +20,7 @@ Pre-generated reports on real open-source PRs. No API call. No cold start.
 | Project | PR | Verdict | Report |
 |---|---|---|---|
 | Express.js | [#5223](https://github.com/expressjs/express/pull/5223) | 🚨 BLOCK | [View Report](https://blastradius-rosy.vercel.app/?report=3f4fa57c-fddd-4787-b70c-89cc397ed285) |
-| Express.js | [#7226](https://github.com/expressjs/express/pull/7226) | 🚨 BLOCK | [View Report](https://blastradius-rosy.vercel.app/?report=0289e575-85e0-4942-a494-ef9a601ea29a) |
+| Express.js | [#7226](https://github.com/expressjs/express/pull/7226) | ⚠️ MEDIUM | [View Report](https://blastradius-rosy.vercel.app/?report=0289e575-85e0-4942-a494-ef9a601ea29a) |
 
 ---
 
