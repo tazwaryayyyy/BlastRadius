@@ -56,6 +56,16 @@ STEP 1 — SYMBOL IDENTIFICATION
 For each changed symbol listed above, find EVERY call site across all provided files.
 Quote the exact file path and line content where each call occurs.
 
+STEP 1A — EVIDENCE COLLECTION
+For each call site you found in STEP 1, quote:
+- The exact file path
+- The exact line number
+- The exact line of code where the call occurs
+If you cannot find a direct call site in the provided files,
+state explicitly: "No direct call found — relationship inferred."
+Do not proceed to STEP 2 until every symbol has been either
+cited with file+line evidence or explicitly marked as inferred.
+
 STEP 2 — CHAIN TRACING (transitive, max 5 hops)
 For each call site, trace upward: what calls the function that calls the changed symbol?
 Continue until you reach entry points (HTTP route handlers, queue consumers, cron functions, CLI commands, exports).

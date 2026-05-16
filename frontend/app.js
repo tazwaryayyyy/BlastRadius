@@ -947,6 +947,7 @@ async function loadSharedReport(reportId) {
     const resp = await fetch(`${API_BASE}/api/report/${encodeURIComponent(reportId)}`);
     if (!resp.ok) return;
     const report = await resp.json();
+    console.log('Deep-link report loaded:', report);
     currentReportId = reportId;
     renderReport(report);
     showShareBar(reportId);
