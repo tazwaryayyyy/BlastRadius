@@ -520,8 +520,7 @@ function renderCostEstimate(report) {
   if (!panel) return;
 
   const est = report.cost_estimate;
-  const isBlock = (report.merge_recommendation || '').toUpperCase().includes('BLOCK');
-  if (!isBlock || !est) {
+  if (!est) {
     panel.style.display = 'none';
     return;
   }
