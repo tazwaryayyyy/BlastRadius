@@ -201,9 +201,12 @@ async def _analysis_event_gen(
     except HTTPException as exc:
         logger.error("Stream pipeline error: %s", exc.detail)
         yield f"data: {json.dumps({'type': 'error', 'message': exc.detail})}\n\n"
-    except (ValueError, RuntimeError, json.JSONDecodeError) as exc:
+    except (ValueError, RuntimeError) as exc:
         logger.error("Stream agent error: %s", exc)
         yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
+    except json.JSONDecodeError as exc:
+        logger.error("Stream JSON parse error: %s", exc)
+        yield f"data: {json.dumps({'type': 'error', 'message': 'Bob returned an unreadable response — please retry.'})}\n\n"
 
 
 # ── Non-streaming pipeline (used by /api/analyze and /api/demo) ───

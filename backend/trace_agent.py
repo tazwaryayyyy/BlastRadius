@@ -45,7 +45,10 @@ class TraceAgent:
             raw, token_count, backend = await call_bob(full_prompt)
 
         _cb("checking_coverage")
-        report_dict = json.loads(_clean_json(raw))
+        cleaned = _clean_json(raw)
+        if not cleaned:
+            raise ValueError("Bob returned an empty response — please retry.")
+        report_dict = json.loads(cleaned)
         report_dict["_trace_tokens"] = token_count
         report_dict["_inference_backend"] = backend
         # Preserve the full stage-1 exchange so RemediationAgent can build a
