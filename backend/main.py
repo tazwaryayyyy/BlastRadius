@@ -203,7 +203,7 @@ async def _analysis_event_gen(
         yield f"data: {json.dumps({'type': 'error', 'message': exc.detail})}\n\n"
     except (ValueError, RuntimeError, json.JSONDecodeError) as exc:
         logger.error("Stream agent error: %s", exc)
-        yield f"data: {json.dumps({'type': 'error', 'message': 'Analysis service error.'})}\n\n"
+        yield f"data: {json.dumps({'type': 'error', 'message': str(exc)})}\n\n"
 
 
 # ── Non-streaming pipeline (used by /api/analyze and /api/demo) ───
@@ -350,22 +350,37 @@ async def analyze_github_pr(body: GithubAnalyzeRequest):
     if gh_token:
         gh_headers["Authorization"] = f"Bearer {gh_token}"
 
-    async with httpx.AsyncClient(timeout=30.0) as client:
-        pr_resp = await client.get(
-            f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}",
-            headers=gh_headers,
-        )
-        if pr_resp.status_code == 404:
-            raise HTTPException(404, "PR not found.")
-        pr_resp.raise_for_status()
-        pr_data = pr_resp.json()
+    try:
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            pr_resp = await client.get(
+                f"https://api.github.com/repos/{owner}/{repo}/pulls/{pr_number}",
+                headers=gh_headers,
+            )
+            if pr_resp.status_code == 404:
+                raise HTTPException(404, "PR not found.")
+            if pr_resp.status_code == 403:
+                reset = pr_resp.headers.get("X-RateLimit-Reset", "unknown")
+                raise HTTPException(
+                    403, f"GitHub rate limit exceeded. Resets at {reset}. Set GITHUB_TOKEN for higher limits.")
+            if pr_resp.status_code != 200:
+                raise HTTPException(
+                    502, f"GitHub API returned {pr_resp.status_code}.")
+            pr_data = pr_resp.json()
 
-    ref = pr_data["base"]["sha"]
-    diff_text = await fetch_pr_diff(owner, repo, pr_number)
-    diff_result = parse_diff(diff_text)
-    files, stats = await fetch_repo_context(
-        owner, repo, ref, priority_files=diff_result.changed_files
-    )
+        ref = pr_data["base"]["sha"]
+        diff_text = await fetch_pr_diff(owner, repo, pr_number)
+        diff_result = parse_diff(diff_text)
+        files, stats = await fetch_repo_context(
+            owner, repo, ref, priority_files=diff_result.changed_files
+        )
+    except HTTPException:
+        raise
+    except httpx.TimeoutException:
+        raise HTTPException(504, "GitHub API timed out. Try again.")
+    except Exception as exc:
+        logger.error("GitHub fetch failed: %s", exc)
+        raise HTTPException(502, f"Failed to fetch PR from GitHub: {exc}")
+
     pr_title = pr_data.get("title")
 
     async def event_gen():

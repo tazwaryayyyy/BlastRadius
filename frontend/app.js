@@ -46,6 +46,7 @@ const newAnalysisBtn = document.getElementById('new-analysis-btn');
 // Analysis timing
 let analysisStartTime = null;
 let streamSteps = [];
+let hideStreamLogTimer = null;
 
 const STAGE_LABELS = {
   loading_repo: 'Loading repository context into Bob...',
@@ -654,6 +655,17 @@ function resetUI() {
   const svgEl = document.querySelector('#graph-canvas svg');
   if (svgEl) svgEl.innerHTML = '';
 
+  // Cancel any pending stream-log hide timer from a previous run
+  if (hideStreamLogTimer !== null) {
+    clearTimeout(hideStreamLogTimer);
+    hideStreamLogTimer = null;
+  }
+
+  // Hide and clear the stream log immediately so stale steps don't flash
+  streamLog.classList.remove('visible');
+  if (streamContent) streamContent.innerHTML = '';
+  streamSteps = [];
+
   // Hide share bar and context stats bar
   const shareBar = document.getElementById('share-bar');
   if (shareBar) shareBar.style.display = 'none';
@@ -675,7 +687,10 @@ function showStreamLog() {
 
 
 function hideStreamLog() {
-  setTimeout(() => streamLog.classList.remove('visible'), 1200);
+  hideStreamLogTimer = setTimeout(() => {
+    streamLog.classList.remove('visible');
+    hideStreamLogTimer = null;
+  }, 1200);
 }
 
 

@@ -65,7 +65,15 @@ async def fetch_repo_context(
     tree_url = f"{GITHUB_API}/repos/{owner}/{repo}/git/trees/{ref}?recursive=1"
     async with httpx.AsyncClient(timeout=30.0) as client:
         resp = await client.get(tree_url, headers=_gh_headers())
-        resp.raise_for_status()
+        if resp.status_code == 403:
+            reset = resp.headers.get("X-RateLimit-Reset", "unknown")
+            raise HTTPException(
+                403, f"GitHub rate limit exceeded fetching repo tree. Resets at {reset}.")
+        if resp.status_code == 404:
+            raise HTTPException(404, "Repository or ref not found on GitHub.")
+        if resp.status_code != 200:
+            raise HTTPException(
+                502, f"GitHub API returned {resp.status_code} fetching repo tree.")
         tree_data = resp.json()
 
     all_paths = [
