@@ -294,6 +294,8 @@ async function fetchAnalysis(diff, repoPath, prTitle) {
 // ── Render report ──────────────────────────────────────────────────
 function renderReport(report) {
   currentReport = report;
+  const graphPanel = document.getElementById('graph-panel');
+  graphPanel?.classList.remove('report-ready');
 
   // Bob metrics — files analyzed + time taken
   const elapsed = analysisStartTime ? ((Date.now() - analysisStartTime) / 1000).toFixed(1) : null;
@@ -328,8 +330,12 @@ function renderReport(report) {
   if (newAnalysisBtn) newAnalysisBtn.style.display = 'inline';
 
   // Graph
-  graphIdle.style.display = 'none';
+  graphIdle.classList.add('is-hidden');
+  window.setTimeout(() => {
+    if (graphIdle.classList.contains('is-hidden')) graphIdle.style.display = 'none';
+  }, 260);
   BlastGraph.renderGraph(report);
+  requestAnimationFrame(() => graphPanel?.classList.add('report-ready'));
 
   // Risk badge in header
   const topRisk = getTopRisk(report.risk_summary);
@@ -397,6 +403,7 @@ function renderChainList(report) {
 
       detailPanel.querySelectorAll('.chain-card').forEach((c) => c.classList.remove('active'));
       card.classList.add('active');
+      window.BlastGraph?.highlightChain?.(chain.id);
     });
   });
 }
@@ -447,6 +454,7 @@ function onNodeClick(node, report) {
   if (!node) {
     // Reset — deselect all cards
     detailPanel.querySelectorAll('.chain-card').forEach((c) => c.classList.remove('active'));
+    window.BlastGraph?.clearHighlight?.();
     return;
   }
 
@@ -601,7 +609,9 @@ function setLoading(loading) {
 
 
 function clearUI() {
+  document.getElementById('graph-panel')?.classList.remove('report-ready');
   graphIdle.style.display = 'flex';
+  graphIdle.classList.remove('is-hidden');
   detailPanel.innerHTML = '';
   detailEmpty.style.display = 'block';
   detailEmpty.innerHTML = 'Select a node to inspect its call chain and risk path.';

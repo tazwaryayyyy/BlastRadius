@@ -19,6 +19,7 @@ let simulation = null;
 let onNodeClickCb = null;
 let resizeHandler = null;
 let pulseTokens = [];
+let activeGraph = null;
 
 function destroy() {
   if (simulation) {
@@ -35,6 +36,7 @@ function destroy() {
     svg.remove();
     svg = null;
   }
+  activeGraph = null;
 }
 
 function initGraph(containerId, onNodeClick) {
@@ -167,11 +169,19 @@ function renderGraph(report) {
   svg.attr('width', W).attr('height', H);
 
   // Clear previous render
+  svg.classed('is-rendered', false);
   svg.selectAll('*:not(defs)').remove();
 
   const { nodes, links } = buildGraphData(report);
 
   if (nodes.length === 0) return;
+
+  nodes.forEach((node, index) => {
+    const spread = Math.min(W, H) * 0.13;
+    const angle = nodes.length === 1 ? 0 : (index / nodes.length) * Math.PI * 2 - Math.PI / 2;
+    node.x = W / 2 + Math.cos(angle) * spread;
+    node.y = H / 2 + Math.sin(angle) * spread;
+  });
 
   // ── Simulation ─────────────────────────────────────────────────
   simulation = d3.forceSimulation(nodes)
@@ -184,6 +194,8 @@ function renderGraph(report) {
     .force('collision', d3.forceCollide().radius(32))
     .alphaDecay(0.025);
 
+  simulation.tick(70);
+
 
   // ── Edges ──────────────────────────────────────────────────────
   const link = svg.append('g').attr('class', 'links')
@@ -193,7 +205,12 @@ function renderGraph(report) {
     .attr('class', (d) => `link verification-${(d.verification_status || 'UNVERIFIABLE').toLowerCase()}`)
     .attr('stroke', (d) => getRiskColor(d.risk) || getRiskColor('safe'))
     .attr('stroke-width', 1.5)
-    .attr('marker-end', (d) => `url(#arrow-${d.risk})`);
+    .attr('marker-end', (d) => `url(#arrow-${d.risk})`)
+    .attr('x1', (d) => isNaN(d.source.x) ? W / 2 : d.source.x)
+    .attr('y1', (d) => isNaN(d.source.y) ? H / 2 : d.source.y)
+    .attr('x2', (d) => isNaN(d.target.x) ? W / 2 : d.target.x)
+    .attr('y2', (d) => isNaN(d.target.y) ? H / 2 : d.target.y)
+    .attr('opacity', 0);
 
   // ── Nodes ──────────────────────────────────────────────────────
   const node = svg.append('g').attr('class', 'nodes')
@@ -201,12 +218,16 @@ function renderGraph(report) {
     .data(nodes)
     .join('g')
     .attr('class', 'node')
+    .attr('transform', (d) => `translate(${isNaN(d.x) ? W / 2 : d.x},${isNaN(d.y) ? H / 2 : d.y})`)
+    .attr('opacity', 0)
     .call(drag(simulation))
     .on('click', (event, d) => {
       event.stopPropagation();
       highlightNode(d.id, nodes, links, node, link, report);
       if (onNodeClickCb) onNodeClickCb(d, report);
     });
+
+  activeGraph = { nodes, links, node, link, report };
 
   // Node radii and stroke per spec
   const BASE_RADIUS = 13; // px, default node
@@ -263,6 +284,10 @@ function renderGraph(report) {
 
     node.attr('transform', (d) => `translate(${isNaN(d.x) ? 0 : d.x},${isNaN(d.y) ? 0 : d.y})`);
   });
+
+  link.transition().duration(360).ease(d3.easeCubicOut).attr('opacity', 1);
+  node.transition().duration(460).delay((d, i) => i * 45).ease(d3.easeCubicOut).attr('opacity', 1);
+  requestAnimationFrame(() => svg.classed('is-rendered', true));
 }
 
 
@@ -313,6 +338,26 @@ function resetHighlight(nodeEl, linkEl) {
 }
 
 
+function highlightChain(chainId) {
+  if (!activeGraph) return;
+  const { node, link, report } = activeGraph;
+  const chain = report.call_chains.find((c) => c.id === chainId);
+  if (!chain) return;
+
+  const relevantFiles = new Set(chain.path);
+  node.classed('dimmed', (d) => !relevantFiles.has(d.id));
+  node.classed('highlighted', (d) => relevantFiles.has(d.id));
+  link.classed('dimmed', (d) => d.chainId !== chainId);
+  link.classed('highlighted', (d) => d.chainId === chainId);
+}
+
+
+function clearHighlight() {
+  if (!activeGraph) return;
+  resetHighlight(activeGraph.node, activeGraph.link);
+}
+
+
 function drag(sim) {
   return d3.drag()
     .on('start', (event, d) => {
@@ -329,4 +374,4 @@ function drag(sim) {
 }
 
 
-window.BlastGraph = { initGraph, renderGraph, destroy };
+window.BlastGraph = { initGraph, renderGraph, destroy, highlightChain, clearHighlight };

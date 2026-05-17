@@ -552,14 +552,28 @@ body::after {
 #graph-panel {
   position: relative;
   display: flex;
-  flex-direction: column
+  flex-direction: column;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.015), transparent 120px),
+    rgba(0, 0, 0, 0.16);
 }
 
 #graph-canvas {
   flex: 1;
   min-height: 400px;
   overflow: hidden;
-  position: relative
+  position: relative;
+  background:
+    linear-gradient(115deg, rgba(68, 170, 255, 0.035), transparent 42%, rgba(255, 68, 68, 0.026)),
+    linear-gradient(rgba(255, 255, 255, 0.018) 1px, transparent 1px) 0 0 / 48px 48px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.014) 1px, transparent 1px) 0 0 / 48px 48px;
+  opacity: 0.9;
+  transition: opacity 0.45s var(--ease-expo), filter 0.45s var(--ease-expo);
+}
+
+#graph-panel.report-ready #graph-canvas {
+  opacity: 1;
+  filter: saturate(1.08);
 }
 
 #graph-idle {
@@ -570,6 +584,13 @@ body::after {
   align-items: center;
   justify-content: center;
   gap: 14px;
+  transition: opacity 0.28s var(--ease-expo), transform 0.28s var(--ease-expo);
+}
+
+#graph-idle.is-hidden {
+  opacity: 0;
+  transform: translateY(-6px);
+  pointer-events: none;
 }
 
 .idle-icon {
@@ -667,10 +688,15 @@ body::after {
   display: none;
   line-height: 1.7;
   box-shadow: rgba(0, 0, 0, 0.55) 0 8px 32px, rgba(94, 106, 210, 0.06) 0 0 40px;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.24s var(--ease-expo), transform 0.24s var(--ease-expo);
 }
 
 #stream-log.visible {
-  display: block
+  display: block;
+  opacity: 1;
+  transform: translateY(0);
 }
 
 .stream-head {
@@ -709,6 +735,7 @@ body::after {
   display: none;
   position: relative;
   z-index: 2;
+  animation: reportRise 0.38s var(--ease-expo) both;
 }
 
 #merge-verdict {
@@ -719,6 +746,7 @@ body::after {
   font-size: 12px;
   line-height: 1.6;
   border: 1px solid;
+  transition: box-shadow 0.28s var(--ease-expo), border-color 0.28s var(--ease-expo);
 }
 
 #merge-verdict.block {
@@ -791,7 +819,7 @@ body::after {
 /* D3 graph nodes */
 .node circle {
   cursor: pointer;
-  transition: filter 0.2s var(--ease-expo)
+  transition: filter 0.22s var(--ease-expo), opacity 0.22s var(--ease-expo), stroke-width 0.22s var(--ease-expo)
 }
 
 .node circle:hover {
@@ -799,11 +827,11 @@ body::after {
 }
 
 .node.dimmed circle {
-  opacity: 0.10
+  opacity: 0.18
 }
 
 .node.dimmed text {
-  opacity: 0.07
+  opacity: 0.14
 }
 
 .node text {
@@ -814,22 +842,22 @@ body::after {
 }
 
 .node.highlighted circle {
-  filter: brightness(1.3) drop-shadow(0 0 8px currentColor)
+  filter: brightness(1.18) saturate(1.12) drop-shadow(0 0 6px rgba(68, 170, 255, 0.42))
 }
 
 .link {
   stroke-opacity: 0.35;
   fill: none;
-  transition: stroke-opacity 0.2s var(--ease-expo)
+  transition: stroke-opacity 0.24s var(--ease-expo), stroke-width 0.24s var(--ease-expo)
 }
 
 .link.dimmed {
-  stroke-opacity: 0.03
+  stroke-opacity: 0.08
 }
 
 .link.highlighted {
-  stroke-opacity: 0.85;
-  stroke-width: 2.5px
+  stroke-opacity: 0.78;
+  stroke-width: 2.25px
 }
 
 /* Right panel — chain cards */
@@ -877,8 +905,21 @@ body::after {
   cursor: pointer;
   background: rgba(255, 255, 255, 0.025);
   box-shadow: var(--shadow-card);
+  border-left: 2px solid transparent;
   transition: background 0.2s var(--ease-expo), box-shadow 0.2s var(--ease-expo), transform 0.2s var(--ease-expo);
-  animation: slideIn 0.22s var(--ease-expo);
+  animation: slideIn 0.32s var(--ease-expo) both;
+}
+
+.chain-card:nth-child(2) {
+  animation-delay: 45ms;
+}
+
+.chain-card:nth-child(3) {
+  animation-delay: 90ms;
+}
+
+.chain-card:nth-child(4) {
+  animation-delay: 135ms;
 }
 
 .chain-card:last-child {
@@ -893,8 +934,17 @@ body::after {
 
 .chain-card.active {
   background: rgba(68, 170, 255, 0.05);
+  border-left-color: var(--changed);
   box-shadow: rgba(68, 170, 255, 0.20) 0 0 0 1px, rgba(0, 0, 0, 0.4) 0 4px 20px;
   transform: translateY(-1px)
+}
+
+.chain-card.risk-CRITICAL.active {
+  border-left-color: var(--critical);
+}
+
+.chain-card.risk-HIGH.active {
+  border-left-color: var(--high);
 }
 
 @keyframes slideIn {
@@ -906,6 +956,18 @@ body::after {
   to {
     opacity: 1;
     transform: translateX(0)
+  }
+}
+
+@keyframes reportRise {
+  from {
+    opacity: 0;
+    transform: translateY(10px)
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0)
   }
 }
 
@@ -1296,15 +1358,16 @@ button:focus-visible {
   padding: 4px 10px;
   font-size: 11px;
   color: var(--text-3);
+  animation: reportRise 0.34s var(--ease-expo) both;
 }
 
 .share-btn {
   font-size: 11px;
   padding: 3px 10px;
   border-radius: 4px;
-  background: var(--bg-2);
+  background: var(--bg-surface);
   border: 1px solid var(--border);
-  color: var(--text-1);
+  color: var(--text-2);
   cursor: pointer;
 }
 
@@ -1327,7 +1390,7 @@ button:focus-visible {
 }
 
 .ctx-summary strong {
-  color: var(--text-1);
+  color: var(--text);
 }
 
 .ctx-warning {
@@ -1367,6 +1430,8 @@ button:focus-visible {
   border: 1px solid var(--critical-border);
   border-radius: 8px;
   background: var(--critical-bg);
+  animation: reportRise 0.42s var(--ease-expo) both;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.035), 0 -10px 34px rgba(255, 68, 68, 0.08);
 }
 
 .cost-grid {
