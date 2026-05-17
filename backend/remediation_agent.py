@@ -60,7 +60,11 @@ class RemediationAgent:
         # Propagate backend: sticky — once any call hit fallback, the report is "fallback"
         report_dict["_inference_backend"] = "fallback" if used_fallback else "bob"
 
-        # ── Cost estimate (whenever uncovered CRITICAL or HIGH chains exist) ──
+        # ── Cost estimate (on any blocking verdict with uncovered chains) ──
+        verdict = report_dict.get("merge_recommendation", "").upper()
+        _BLOCK_KEYWORDS = ("BLOCK", "DO NOT MERGE", "REJECT", "HOLD")
+        is_blocking = any(kw in verdict for kw in _BLOCK_KEYWORDS)
+
         all_chains = report_dict.get("call_chains", [])
         critical_uncovered_count = len([
             c for c in all_chains
@@ -75,7 +79,9 @@ class RemediationAgent:
             if c.get("risk") == "MEDIUM" and not c.get("has_tests", True)
         ])
         stubs_count = len(remediations)
-        if critical_uncovered_count > 0 or high_uncovered_count > 0 or stubs_count > 0:
+        total_uncovered = critical_uncovered_count + \
+            high_uncovered_count + medium_uncovered_count
+        if is_blocking and (total_uncovered > 0 or stubs_count > 0):
             # CRITICAL paths weighted at full incident cost; HIGH at 50%; MEDIUM at 25%
             incident_cost = (
                 critical_uncovered_count + high_uncovered_count *
