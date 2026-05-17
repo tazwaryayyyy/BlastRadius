@@ -128,7 +128,12 @@ async def call_bob(
                     return await _call_fallback(msgs, temperature, max_tokens)
 
                 resp.raise_for_status()
-                data = resp.json()
+                try:
+                    data = resp.json()
+                except Exception as exc:
+                    logger.error(
+                        "Bob returned non-JSON body at status 200: %s", exc)
+                    return await _call_fallback(msgs, temperature, max_tokens)
                 try:
                     if "results" in data:
                         text = data["results"][0]["generated_text"]

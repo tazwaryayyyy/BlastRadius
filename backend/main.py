@@ -237,7 +237,7 @@ async def _run_analysis(req: AnalyzeRequest) -> BlastRadiusReport:
         report_dict.pop("_remediation_tokens", None)
         report_dict["inference_backend"] = report_dict.pop(
             "_inference_backend", "bob")
-    except ValueError as exc:
+    except (ValueError, json.JSONDecodeError) as exc:
         logger.error("Analysis service error: %s", exc)
         raise HTTPException(
             503, "Analysis service is not configured.") from exc
