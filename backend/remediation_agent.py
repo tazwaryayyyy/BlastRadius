@@ -33,7 +33,7 @@ class RemediationAgent:
 
         uncovered_chains = [
             c for c in report_dict.get("call_chains", [])
-            if c.get("risk") in ("CRITICAL", "HIGH") and not c.get("has_tests", True)
+            if c.get("risk") in ("CRITICAL", "HIGH", "MEDIUM") and not c.get("has_tests", True)
         ]
 
         remediations: list[dict] = []
@@ -71,10 +71,15 @@ class RemediationAgent:
                 c for c in all_chains
                 if c.get("risk") == "HIGH" and not c.get("has_tests", True)
             ])
+            medium_uncovered_count = len([
+                c for c in all_chains
+                if c.get("risk") == "MEDIUM" and not c.get("has_tests", True)
+            ])
             stubs_count = len(remediations)
-            # CRITICAL paths weighted at full incident cost; HIGH at 50%
+            # CRITICAL paths weighted at full incident cost; HIGH at 50%; MEDIUM at 25%
             incident_cost = (
-                critical_uncovered_count + high_uncovered_count * 0.5
+                critical_uncovered_count + high_uncovered_count *
+                0.5 + medium_uncovered_count * 0.25
             ) * INCIDENT_RESTORE_HOURS * COST_PER_HOUR
             hours_saved = stubs_count * HOURS_SAVED_PER_STUB
             parts = []
@@ -82,6 +87,8 @@ class RemediationAgent:
                 parts.append(f"{critical_uncovered_count} critical")
             if high_uncovered_count:
                 parts.append(f"{high_uncovered_count} high-risk")
+            if medium_uncovered_count:
+                parts.append(f"{medium_uncovered_count} medium-risk")
             path_desc = (" + ".join(parts) +
                          " uncovered path(s)") if parts else "uncovered paths"
             cost_estimate = CostEstimate(
