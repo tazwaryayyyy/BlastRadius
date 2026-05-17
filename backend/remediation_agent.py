@@ -128,18 +128,37 @@ def _build_prompt(chain: dict, repo_context: dict[str, str]) -> str:
     )
 
     leaf = path[-1].split("/")[-1] if path else "module"
-    module_name = leaf.replace(".js", "").replace(".ts", "").replace(".py", "")
+    ext = leaf.rsplit(".", 1)[-1].lower() if "." in leaf else ""
+    module_name = leaf.rsplit(".", 1)[0] if "." in leaf else leaf
+
+    # Language-aware test framework and file extension
+    if ext in ("js", "jsx", "ts", "tsx", "mjs", "cjs"):
+        framework = "Jest"
+        test_path = f"__tests__/{module_name}.test.{ext if ext in ('ts', 'tsx') else 'js'}"
+        stub_hint = "complete runnable Jest test with real require/import and expect() assertions"
+    elif ext == "go":
+        framework = "Go testing"
+        test_path = f"{module_name}_test.go"
+        stub_hint = "complete runnable Go test using the testing package with real assertions"
+    elif ext in ("java", "kt"):
+        framework = "JUnit 5"
+        test_path = f"src/test/{module_name}Test.java"
+        stub_hint = "complete runnable JUnit 5 test with real assertions"
+    else:
+        framework = "pytest"
+        test_path = f"tests/test_{module_name}.py"
+        stub_hint = "complete runnable pytest code with real imports and assertions"
 
     risk_level = chain.get("risk", "CRITICAL")
     return (
-        f"You are a test engineer. Generate a complete, runnable pytest stub for this "
+        f"You are a test engineer. Generate a complete, runnable {framework} stub for this "
         f"untested {risk_level} code path. No preamble. Output ONLY valid JSON.\n\n"
         f"Chain: {chain_id}\nPath: {' -> '.join(path)}\n"
         f"Symbols: {', '.join(symbols)}\nBusiness impact: {impact}\n\n"
         f"Source files:\n{file_blocks}\n\n"
         f"Output exactly this JSON shape:\n"
         f'{{"chain_id": "{chain_id}", '
-        f'"test_file_path": "tests/test_{module_name}.py", '
-        f'"test_stub": "<complete runnable pytest code with real imports and assertions>", '
+        f'"test_file_path": "{test_path}", '
+        f'"test_stub": "<{stub_hint}>", '
         f'"fix_summary": "<one sentence engineers can act on immediately>"}}'
     )

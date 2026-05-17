@@ -70,6 +70,8 @@ STEP 2 — CHAIN TRACING (transitive, max 5 hops)
 For each call site, trace upward: what calls the function that calls the changed symbol?
 Continue until you reach entry points (HTTP route handlers, queue consumers, cron functions, CLI commands, exports).
 Build the complete chain from changed file → entry point.
+CRITICAL RULE: Test files (*.test.*, *.spec.*, __tests__/**) are NEVER valid chain endpoints and must NEVER appear in the path[] array.
+If a test file imports the changed symbol, that is test coverage evidence — note it in test_files[] — but keep tracing the PRODUCTION path through non-test callers.
 
 STEP 3 — RISK CLASSIFICATION
 For each complete chain, assign risk:
@@ -88,10 +90,13 @@ Use explicit uncertainty language in confidence_reason whenever anything is infe
 STEP 4 — TEST COVERAGE CHECK
 For each chain, check whether any file in __tests__/, *.test.*, or *.spec.* explicitly
 imports and calls a function in this chain's path. Set has_tests accordingly.
-IMPORTANT: A test file appearing as the last node in the chain path is NOT evidence of
-coverage — it means the chain terminates at a test file, not that the changed symbol's
-new behavior is tested. Only set has_tests=true if a test file explicitly imports and
-exercises the changed symbol under its new behavior.
+RULES:
+- has_tests=true ONLY if a test explicitly validates the symbol's behavior UNDER THE NEW
+  VALUES introduced by this diff. If the test was written against old parameter values
+  (e.g. old windowMs, old maxRequests), the new behavior is NOT covered — set has_tests=false.
+- A test file that simply calls the changed symbol does NOT mean has_tests=true unless the
+  test assertions specifically exercise the changed values or logic.
+- NEVER set has_tests=true based solely on a test file importing the changed module.
 
 STEP 5 — OUTPUT
 Produce ONLY the following JSON object. No preamble. No markdown. No backticks.
